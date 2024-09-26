@@ -1,5 +1,6 @@
 <img src="https://skillicons.dev/icons?i=nodejs,powershell,npm" />
 <br>
+
 # Fixer Backend
 The backend service for Fixer, a platform that provides reliable currency exchange rates, currency conversions, and other financial data services.
 
