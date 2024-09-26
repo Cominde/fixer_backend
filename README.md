@@ -1,4 +1,4 @@
-<img src="https://skillicons.dev/icons?i=nodejs,powershell,npm" />
+<img src="https://skillicons.dev/icons?i=nodejs,js" />
 <br>
 
 # Fixer Backend
