@@ -13,8 +13,6 @@ const Car = require("../models/Car");
 const ApiFeatures = require("../utils/apiFeatures");
 const sendEmail = require("../utils/sendEmail");
 const CategoryCode = require("../models/categoryCode");
-const { normalizeCarNumber } = require("../utils/carNumberCheck");
-
 // Upload single image
 exports.uploadUserImage = uploadSingleImage("profileImg");
 
@@ -93,14 +91,14 @@ exports.getUsers = asyncHandler(async (req, res) => {
     return formattedUser;
   });
   sortedRepairs = formattedUsers.sort(
-    (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+    (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
   );
 
   if (paginationResult.limit > users.length) {
     paginationResult.numberOfPages = 1;
   } else {
     paginationResult.numberOfPages = Math.ceil(
-      users.length / paginationResult.limit,
+      users.length / paginationResult.limit
     );
   }
   res.status(200).json({
@@ -124,9 +122,7 @@ exports.createUser = asyncHandler(async (req, res, next) => {
   //console.log("generated code", generatedCode);
   //console.log("generated Password", generatedPassword);
   // 1- Create user
-  const carNumber = normalizeCarNumber(req.body.carNumber);
-  const clientType = req.body.clientType;
-
+  const { carNumber, clientType } = req.body;
   let newCarCode;
   //const fuser = await Car.findOne({ email });
   //if (fuser) {
@@ -137,15 +133,15 @@ exports.createUser = asyncHandler(async (req, res, next) => {
     return next(
       new ApiError(
         `There is already a car with the same car number ${carNumber}`,
-        400,
-      ),
+        400
+      )
     );
   }
   if (req.body.manually == "True" || req.body.manually == "true") {
     const categoryCode = await CategoryCode.findOne({ category: clientType });
     if (!categoryCode) {
       return next(
-        new ApiError(`There is no type with this name ${clientType}`, 400),
+        new ApiError(`There is no type with this name ${clientType}`, 400)
       );
     }
     const carCode = req.body.carCode;
@@ -160,7 +156,7 @@ exports.createUser = asyncHandler(async (req, res, next) => {
     const categoryCode = await CategoryCode.findOne({ category: clientType });
     if (!categoryCode) {
       return next(
-        new ApiError(`There is no type with this name ${clientType}`, 400),
+        new ApiError(`There is no type with this name ${clientType}`, 400)
       );
     }
 
@@ -377,7 +373,7 @@ exports.changeUserPassword = asyncHandler(async (req, res, next) => {
     },
     {
       new: true,
-    },
+    }
   );
 
   if (!document) {
@@ -400,7 +396,7 @@ exports.makeUserUnactive = asyncHandler(async (req, res, next) => {
   const user = await User.findByIdAndUpdate(
     req.params.id,
     { active },
-    { new: true },
+    { new: true }
   );
 
   if (!user) {
@@ -431,7 +427,7 @@ exports.updateLoggedUserPassword = asyncHandler(async (req, res, next) => {
     },
     {
       new: true,
-    },
+    }
   );
 
   // 2) Generate token
@@ -451,7 +447,7 @@ exports.updateLoggedUserData = asyncHandler(async (req, res, next) => {
       email: req.body.email,
       phone: req.body.phone,
     },
-    { new: true },
+    { new: true }
   );
 
   res.status(200).json({ data: updatedUser });
@@ -487,7 +483,7 @@ exports.searchForUser = asyncHandler(async (req, res, next) => {
             (path === "email" ||
               path === "name" ||
               path === "phoneNumber" ||
-              path === "role"), // Filter specific fields for search
+              path === "role") // Filter specific fields for search
         )
         .map((path) => ({
           [path]: { $regex: searchString, $options: "i" },
@@ -502,8 +498,8 @@ exports.searchForUser = asyncHandler(async (req, res, next) => {
     return next(
       new apiError(
         `No document found for the search string ${searchString}`,
-        404,
-      ),
+        404
+      )
     );
   }
   const totalDocuments = await User.countDocuments(query.getQuery());
@@ -581,8 +577,8 @@ exports.suggestNextCodeNumber = asyncHandler(async (req, res, next) => {
     return next(
       new ApiError(
         `There is no type with this name ${clientType.clientType}`,
-        400,
-      ),
+        400
+      )
     );
   }
   let newCarCode = 0;

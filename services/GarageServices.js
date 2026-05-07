@@ -7,15 +7,14 @@ const asyncHandler = require("express-async-handler");
 const factory = require("./handlersFactory");
 const ApiFeatures = require("../utils/apiFeatures");
 const CategoryCode = require("../models/categoryCode");
-const { normalizeCarNumber } = require("../utils/carNumberCheck");
 
 // @desc add car
 // @Route GET /api/v1/Garage
 // @access private
 exports.addCar = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-  const carNumber = normalizeCarNumber(req.body.carNumber);
   const {
+    carNumber,
     chassisNumber,
     color,
     brand,
