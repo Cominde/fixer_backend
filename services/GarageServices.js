@@ -152,6 +152,7 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     distances,
     motorNumber,
     generatedCode: newCarCode,
+    generatedPassword: user.password,
   });
 
   if (!newCar) {

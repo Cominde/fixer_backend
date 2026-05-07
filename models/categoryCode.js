@@ -1,3 +1,4 @@
+const { cairoDatePlugin } = require("../utils/cairoDate");
 const mongoose = require("mongoose");
 
 const CategoryCode = new mongoose.Schema(
@@ -13,6 +14,7 @@ const CategoryCode = new mongoose.Schema(
       unique: [true, "this code is used before"],
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
+CategoryCode.plugin(cairoDatePlugin);
 module.exports = mongoose.model("Category", CategoryCode);

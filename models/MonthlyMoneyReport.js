@@ -1,4 +1,5 @@
 // models/MonthlyMoneyReport.js
+const { cairoDatePlugin } = require("../utils/cairoDate");
 const mongoose = require("mongoose");
 
 const monthlyMoneyReportSchema = new mongoose.Schema(
@@ -30,7 +31,7 @@ const monthlyMoneyReportSchema = new mongoose.Schema(
 
   {
     timestamps: true,
-  }
+  },
 );
-
+monthlyMoneyReportSchema.plugin(cairoDatePlugin);
 module.exports = mongoose.model("MonthlyMoneyReport", monthlyMoneyReportSchema);

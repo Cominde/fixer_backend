@@ -1,5 +1,6 @@
 // models/Worker.js
 const mongoose = require("mongoose");
+const { cairoDatePlugin } = require("../utils/cairoDate");
 
 const workerSchema = new mongoose.Schema(
   {
@@ -42,7 +43,7 @@ const workerSchema = new mongoose.Schema(
       },
     ],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
-
+workerSchema.plugin(cairoDatePlugin);
 module.exports = mongoose.model("Worker", workerSchema);

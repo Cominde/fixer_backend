@@ -1,4 +1,5 @@
 // models/Inventory.js
+const { cairoDatePlugin } = require("../utils/cairoDate");
 const mongoose = require("mongoose");
 
 const appVersionSchema = new mongoose.Schema(
@@ -9,7 +10,8 @@ const appVersionSchema = new mongoose.Schema(
     },
   },
 
-  { timestamps: true }
+  { timestamps: true },
 );
+appVersionSchema.plugin(cairoDatePlugin);
 
 module.exports = mongoose.model("appVersion", appVersionSchema);

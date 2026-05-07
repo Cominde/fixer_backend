@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { cairoDatePlugin } = require("../utils/cairoDate");
 //const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
@@ -84,7 +85,5 @@ const userSchema = new mongoose.Schema(
 //  this.password = await bcrypt.hash(this.password, 12);
 //  next();
 //});
-
-const User = mongoose.model("User", userSchema);
-
-module.exports = User;
+userSchema.plugin(cairoDatePlugin);
+module.exports = mongoose.model("User", userSchema);

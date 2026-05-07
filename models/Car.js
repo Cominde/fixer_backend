@@ -1,4 +1,5 @@
 // models/Car.js
+const { cairoDatePlugin } = require("../utils/cairoDate");
 const mongoose = require("mongoose");
 
 const carSchema = new mongoose.Schema({
@@ -87,4 +88,5 @@ const carSchema = new mongoose.Schema({
   },
 });
 
+carSchema.plugin(cairoDatePlugin);
 module.exports = mongoose.model("Car", carSchema);
