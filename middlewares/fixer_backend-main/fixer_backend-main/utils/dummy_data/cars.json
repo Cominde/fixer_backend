@@ -1,0 +1,46 @@
+[
+  {
+    "ownerName": "Mohamed salah ",
+    "phoneNumber": "01000000000",
+    "carNumber":"100 mo",
+    "email": "moSalah@tot.com",
+    "carIdNumber": "123456789",
+    "color": "red",
+    "state": "in repair",
+    "brand": "kia",
+    "category": "soul",
+    "model": "2005",
+    "generatedCode": "202020",
+    "generatedPassword": "262626",
+    "nextRepairDate": "6/7/2000",
+    "periodicRepairs": "5",
+    "nonPeriodicRepairs": "2",
+    "componentState": [
+      ["sag", "bad", "hhhhhhhhhhhhhh"],
+      ["skman", "good", "vovovovov"]
+    ],
+    "repairing": true
+  },
+  {
+    "ownerName": "leo messi ",
+    "carNumber":"001 leo",
+    "phoneNumber": "01111111111",
+    "email": "leo.messi@hoh.com",
+    "carIdNumber": "1010101010",
+    "color": "blue&red",
+    "state": "not done",
+    "brand": "towota",
+    "category": "supra",
+    "model": "2022",
+    "generatedCode": "555555",
+    "generatedPassword": "101010",
+    "nextRepairDate": "30/2/2023",
+    "periodicRepairs": "10",
+    "nonPeriodicRepairs": "0",
+    "componentState": [
+      ["anbla", "bad", "suiiiiiiiiiiii"],
+      ["skman", "good", "ratrattttttttttt"]
+    ],
+    "repairing": false
+  }
+]
