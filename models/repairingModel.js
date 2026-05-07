@@ -117,10 +117,14 @@ const repairingSchema = new mongoose.Schema(
     nextRepairDate: {
       type: Date,
     },
+    oldgenId: {
+      type: String,
+      required: false,
+    },
   },
 
   // مفيده ليا لو عايز اجيب ال منتج الاحدث بالوقت
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("repairing", repairingSchema);

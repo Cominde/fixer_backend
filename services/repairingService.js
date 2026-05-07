@@ -9,6 +9,84 @@ const ApiFeatures = require("../utils/apiFeatures");
 const asyncHandler = require("express-async-handler");
 const { body } = require("express-validator");
 
+const generateNewRepairId = async (
+  const_part_of_id = "2021",
+  manualId = null,
+) => {
+  let newId = "";
+
+  if (manualId !== null) {
+    const parsedCarCode = parseInt(manualId, 10);
+
+    if (isNaN(parsedCarCode) || !Number.isInteger(parsedCarCode)) {
+      throw new Error("Invalid carCode. It must be a number.");
+    }
+
+    newId = const_part_of_id + parsedCarCode;
+
+    const exRepair = await Repairing.findOne({ genId: newId });
+    if (exRepair) {
+      throw new Error(`Repairing with id ${newId} already exists.`);
+    }
+  } else {
+    // automatic id
+    const regex = new RegExp("^" + const_part_of_id + "\\d+$", "i");
+
+    const lastRepair = await Repairing.aggregate([
+      { $match: { genId: regex } },
+      {
+        $project: {
+          numericCode: {
+            $toInt: {
+              $substr: [
+                "$genId",
+                { $strLenCP: const_part_of_id },
+                {
+                  $subtract: [
+                    { $strLenCP: "$genId" },
+                    { $strLenCP: const_part_of_id },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+      { $sort: { numericCode: -1 } },
+      { $limit: 1 },
+    ]);
+
+    if (lastRepair.length > 0 && !isNaN(lastRepair[0].numericCode)) {
+      newId = const_part_of_id + (lastRepair[0].numericCode + 1);
+    } else {
+      newId = const_part_of_id + "1";
+    }
+    /* لو عايز أرقم من الأرقام الناقصة فى النص
+    const validCodes = repairs
+      .map((repair) => repair.numericCode)
+      .filter((num) => !isNaN(num) && num > 0)
+      .sort((a, b) => a - b);
+
+    //find the first missing number or create the next newId
+    if (validCodes.length > 0) {
+      for (let i = 0; i < validCodes.length; i++) {
+      #علشان أكدد الترتيب  1 2 3 وهكذا 
+        if (validCodes[i] !== i + 1) {
+          newId = const_part_of_id + (i + 1);
+          break;
+        }
+      }
+
+      if (!newId) {
+        newId = const_part_of_id + (validCodes.length + 1);
+      }
+    } else {
+      newId = const_part_of_id + "1";
+    }*/
+  }
+
+  return newId;
+};
 // @desc create a repairing
 // @Route POST /api/v1/repairing
 // @access private
@@ -37,6 +115,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     nextRepairDistance,
   } = req.body;
   if (req.body.manually == "True" || req.body.manually == true) {
+    return next(new apiError(`the manually stop working from now`, 400));
     const id = req.body.id;
     const parsedCarCode = parseInt(id, 10);
 
@@ -52,50 +131,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       );
     }
   } else {
-    const regex = new RegExp("^" + const_part_of_id + "\\d+$", "i");
-
-    const repairs = await Repairing.aggregate([
-      { $match: { genId: regex } }, //match genId starting with '2021'
-      {
-        $project: {
-          numericCode: {
-            $toInt: {
-              $substr: [
-                "$genId",
-                { $strLenCP: const_part_of_id }, //skip 2021
-                {
-                  $subtract: [
-                    { $strLenCP: "$genId" },
-                    { $strLenCP: const_part_of_id },
-                  ],
-                },
-              ],
-            },
-          },
-        },
-      },
-    ]);
-
-    const validCodes = repairs
-      .map((repair) => repair.numericCode)
-      .filter((num) => !isNaN(num) && num > 0)
-      .sort((a, b) => a - b);
-
-    //find the first missing number or create the next newId
-    if (validCodes.length > 0) {
-      for (let i = 0; i < validCodes.length; i++) {
-        if (validCodes[i] !== i + 1) {
-          newId = const_part_of_id + (i + 1);
-          break;
-        }
-      }
-
-      if (!newId) {
-        newId = const_part_of_id + (validCodes.length + 1);
-      }
-    } else {
-      newId = const_part_of_id + "1";
-    }
+    newId = await generateNewRepairId("2021");
   }
   if (!components || !services || !additions) {
     return next(
@@ -667,53 +703,7 @@ exports.getRepairsReport = asyncHandler(async (req, res, next) => {
   });
 });
 exports.suggestNextCodeNumber = asyncHandler(async (req, res, next) => {
-  const const_part_of_id = "2021";
-  let newId = null;
-  const regex = new RegExp("^" + const_part_of_id + "\\d+$", "i");
-
-  const repairs = await Repairing.aggregate([
-    { $match: { genId: regex } },
-    {
-      $project: {
-        numericCode: {
-          $toInt: {
-            $substr: [
-              "$genId",
-              { $strLenCP: const_part_of_id },
-              {
-                $subtract: [
-                  { $strLenCP: "$genId" },
-                  { $strLenCP: const_part_of_id },
-                ],
-              },
-            ],
-          },
-        },
-      },
-    },
-  ]);
-
-  const validCodes = repairs
-    .map((repair) => repair.numericCode)
-    .filter((num) => !isNaN(num) && num > 0)
-    .sort((a, b) => a - b);
-
-  //find the first missing number or create the next newId
-  if (validCodes.length > 0) {
-    for (let i = 0; i < validCodes.length; i++) {
-      if (validCodes[i] !== i + 1) {
-        newId = i + 1;
-        break;
-      }
-    }
-
-    if (!newId) {
-      newId = validCodes.length + 1;
-    }
-  } else {
-    newId = "1";
-  }
-
+  const newId = await generateNewRepairId("2021");
   res.status(200).json({ data: newId });
 });
 
