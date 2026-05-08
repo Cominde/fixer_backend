@@ -1,16 +1,36 @@
 // utils/cairoDate.js
 const formatDateToCairo = (date) => {
   if (!date) return null;
-  return new Date(date).toLocaleString("en-EG", {
-    timeZone: "Africa/Cairo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+
+  const d = new Date(date);
+
+  const options = { timeZone: "Africa/Cairo" };
+
+  const day = String(
+    new Intl.DateTimeFormat("en", { ...options, day: "2-digit" }).format(d),
+  );
+  const month = String(
+    new Intl.DateTimeFormat("en", { ...options, month: "2-digit" }).format(d),
+  );
+  const year = String(
+    new Intl.DateTimeFormat("en", { ...options, year: "numeric" }).format(d),
+  );
+  const hour = String(
+    new Intl.DateTimeFormat("en", {
+      ...options,
+      hour: "2-digit",
+      hour12: false,
+    }).format(d),
+  ).padStart(2, "0");
+  const minute = String(
+    new Intl.DateTimeFormat("en", { ...options, minute: "2-digit" }).format(d),
+  ).padStart(2, "0");
+  const second = String(
+    new Intl.DateTimeFormat("en", { ...options, second: "2-digit" }).format(d),
+  ).padStart(2, "0");
+
+  return `${day}/${month}/${year}, ${hour}:${minute}:${second}`;
+  // Output: "07/05/2026, 23:51:12"
 };
 
 // Mongoose plugin — add to any schema
