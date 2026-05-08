@@ -910,7 +910,10 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           (service) => service.state === "completed",
         ).length;
 
-        for (const { price, state } of req.body.services) {
+        // Only process new services once
+        const newServices = req.body.services.filter((service) => !service.id);
+
+        for (const { price, state } of newServices) {
           updateTotalPrice = updateTotalPrice + price;
 
           totalServicesCount++;
@@ -943,7 +946,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           );
         }
 
-        repair.Services = repair.Services.concat(req.body.services);
+        repair.Services = repair.Services.concat(newServices);
         repair.complete = newComplete;
         repair.completedServicesRatio = completedServicesRatio;
       }
@@ -990,12 +993,17 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           );
         }
       } else {
-        for (const { price } of req.body.additions) {
+        // Only process new additions once
+        const newAdditions = req.body.additions.filter(
+          (addition) => !addition.id,
+        );
+
+        for (const { price } of newAdditions) {
           if (price) {
             updateTotalPrice += Number(price);
           }
         }
-        repair.additions = repair.additions.concat(req.body.additions);
+        repair.additions = repair.additions.concat(newAdditions);
       }
     }
     totalPrice = totalPrice + updateTotalPrice;
