@@ -100,11 +100,11 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   let complete = false;
   let newId = 0;
   const const_part_of_id = "2021";
+  const carNumber = normalizeCarNumber(req.body.carNumber);
   const {
     components,
     services,
     additions,
-    carNumber,
     type,
     discount,
     daysItTake,
@@ -542,7 +542,9 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
   const { mongooseQuery, paginationResult } = apiFeatures;
   const repairs = await mongooseQuery;
 
-  const carNumbers = repairs.map((repair) => repair.carNumber);
+  const carNumbers = repairs.map((repair) =>
+    normalizeCarNumber(repair.carNumber),
+  );
 
   const cars = await Car.find({ carNumber: { $in: carNumbers } });
 
@@ -556,9 +558,9 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
     const car = cars.find((car) => car.carNumber === repair.carNumber);
     if (car) {
       return {
-        brand: car.brand,
-        category: car.category,
-        model: car.model,
+        brand: repair.brand,
+        category: repair.category,
+        model: repair.model,
         client: repair.client,
         priceAfterDiscount: repair.priceAfterDiscount,
         carCode: carCode,
@@ -566,12 +568,16 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
         id: repair._id,
       };
     } else {
-      return next(
-        new apiError(
-          `there is an error in car informations of this car number ${repair.carNumber}`,
-          400,
-        ),
-      );
+      return {
+        error: `the car ${repair.carNumber} for this repair is not exist`,
+        brand: repair.brand,
+        category: repair.category,
+        model: repair.model,
+        client: repair.client,
+        priceAfterDiscount: repair.priceAfterDiscount,
+        paidOn: repair.createdAt,
+        id: repair._id,
+      };
     }
   });
   enrichedRepairs = enrichedRepairs.sort(
