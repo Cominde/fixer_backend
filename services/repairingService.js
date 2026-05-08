@@ -591,8 +591,8 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc Search for car services by owner Name
-// @Route GET /api/v1/repairing/owner/:ownerName
+// @desc Search for car services by car Id
+// @Route GET /api/v1/repairing/getById/:carId
 // @access private
 exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
@@ -600,7 +600,7 @@ exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   const car = await Car.findById(id);
 
   if (!car || car.length === 0) {
-    return next(new apiError(`Can't find services for this owner ${id}`, 404));
+    return next(new apiError(`there is no car with this id ${id}`, 404));
   }
 
   const repairing = await Repairing.find({
@@ -608,7 +608,7 @@ exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   });
 
   if (!repairing || repairing.length === 0) {
-    return next(new apiError(`Can't find services for this owner ${id}`, 404));
+    return next(new apiError(`Can't find services for this Car ${id}`, 404));
   }
   sortedRepairs = repairing.sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt),

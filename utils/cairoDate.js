@@ -29,8 +29,8 @@ const formatDateToCairo = (date) => {
     new Intl.DateTimeFormat("en", { ...options, second: "2-digit" }).format(d),
   ).padStart(2, "0");
 
-  return `${day}/${month}/${year}, ${hour}:${minute}:${second}`;
-  // Output: "07/05/2026, 23:51:12"
+  return `${year}/${month}/${day}T${hour}:${minute}:${second}+00:00`;
+  // Output: "2026/05/07T23:51:12+00:00"
 };
 
 // Mongoose plugin — add to any schema
