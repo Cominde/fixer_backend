@@ -8,7 +8,7 @@ const apiError = require("../utils/apiError");
 const ApiFeatures = require("../utils/apiFeatures");
 const asyncHandler = require("express-async-handler");
 const { body } = require("express-validator");
-
+const { normalizeCarNumber } = require("../utils/carNumberCheck");
 const generateNewRepairId = async (
   const_part_of_id = "2021",
   manualId = null,
@@ -413,12 +413,13 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
 // @Route GET /api/v1/repairing/:carNumber
 // @access private
 exports.getCarRepairsByNumber = asyncHandler(async (req, res, next) => {
-  const { carNumber } = req.params;
-
+  const carNumber = normalizeCarNumber(req.params.carNumber);
   try {
-    const repairing = await Repairing.find({ carNumber });
+    const repairing = await Repairing.find({
+      carNumber,
+    });
 
-    if (!repairing) {
+    if (!repairing || repairing.length === 0) {
       return next(
         new apiError(
           `Can't find services for this car number ${carNumber}`,
@@ -426,10 +427,12 @@ exports.getCarRepairsByNumber = asyncHandler(async (req, res, next) => {
         ),
       );
     }
-    sortedRepairs = repairing.sort(
+
+    const sortedRepairs = repairing.sort(
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
     );
-    res.status(200).json({ data: repairing });
+
+    res.status(200).json({ data: sortedRepairs });
   } catch (error) {
     console.error("Error:", error);
     next(new apiError("Internal Server Error", 500));
