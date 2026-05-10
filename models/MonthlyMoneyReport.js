@@ -1,7 +1,7 @@
 // models/MonthlyMoneyReport.js
 const { cairoDatePlugin } = require("../utils/cairoDate");
 const mongoose = require("mongoose");
-const { cairoDatePlugin } = require("../utils/cairoDate");
+
 const monthlyMoneyReportSchema = new mongoose.Schema(
   {
     date: { type: Date },

@@ -1,7 +1,6 @@
 const mongoose = require("mongoose");
 const { cairoDatePlugin } = require("../utils/cairoDate");
 //const bcrypt = require("bcryptjs");
-const { cairoDatePlugin } = require("../utils/cairoDate");
 const userSchema = new mongoose.Schema(
   {
     name: {

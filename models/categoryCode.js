@@ -1,6 +1,6 @@
 const { cairoDatePlugin } = require("../utils/cairoDate");
 const mongoose = require("mongoose");
-const { cairoDatePlugin } = require("../utils/cairoDate");
+
 const CategoryCode = new mongoose.Schema(
   {
     category: {

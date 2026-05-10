@@ -1,7 +1,7 @@
 // models/Inventory.js
 const { cairoDatePlugin } = require("../utils/cairoDate");
 const mongoose = require("mongoose");
-const { cairoDatePlugin } = require("../utils/cairoDate");
+
 const inventorySchema = new mongoose.Schema(
   {
     name: {

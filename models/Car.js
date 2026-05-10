@@ -1,7 +1,7 @@
 // models/Car.js
 const { cairoDatePlugin } = require("../utils/cairoDate");
 const mongoose = require("mongoose");
-const { cairoDatePlugin } = require("../utils/cairoDate");
+
 const carSchema = new mongoose.Schema({
   ownerName: {
     type: String,
