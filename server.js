@@ -58,19 +58,19 @@ app.use(
   }),
 );
 // Routes
-app.use("/api/V2/Inventort", InvRoute);
-app.use("/api/V2/Garage", GarageRoute);
-app.use("/api/V2/User", userRoute);
-app.use("/api/V2/auth", authRoute);
-app.use("/api/V2/repairing", repairingRoute);
-app.use("/api/V2/Home", homeRoute);
-app.use("/api/V2/Worker", workerRoute);
-app.use("/api/V2/MonthlyReport", MonthlyReport);
-app.use("/api/V2/Category", CategoryCode);
-app.use("/api/V2/appVersion", appVersion);
-app.use("/api/V2/ClearCarData", ClearCarData);
-app.use("/api/V2/Notification", Notification);
-app.use("/api/V2/SSE", SSERoute);
+app.use("/api/V1/Inventort", InvRoute);
+app.use("/api/V1/Garage", GarageRoute);
+app.use("/api/V1/User", userRoute);
+app.use("/api/V1/auth", authRoute);
+app.use("/api/V1/repairing", repairingRoute);
+app.use("/api/V1/Home", homeRoute);
+app.use("/api/V1/Worker", workerRoute);
+app.use("/api/V1/MonthlyReport", MonthlyReport);
+app.use("/api/V1/Category", CategoryCode);
+app.use("/api/V1/appVersion", appVersion);
+app.use("/api/V1/ClearCarData", ClearCarData);
+app.use("/api/V1/Notification", Notification);
+app.use("/api/V1/SSE", SSERoute);
 // ping api
 app.get("/api/ping", (req, res) => {
   res.status(200).send("Server is alive!");
