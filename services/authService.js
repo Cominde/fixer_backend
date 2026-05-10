@@ -147,14 +147,19 @@ exports.loginByCarCode = asyncHandler(async (req, res, next) => {
 
 // @desc   make sure the user is logged in
 exports.protect = asyncHandler(async (req, res, next) => {
-  //check if token exist, if exist get
   let token;
+
+  console.log("Auth Header:", req.headers.authorization); // ADD THIS
+
   if (
     req.headers.authorization &&
     req.headers.authorization.startsWith("Bearer ")
   ) {
     token = req.headers.authorization.split(" ")[1];
   }
+
+  console.log("Token extracted:", token); // ADD THIS
+
   if (!token) {
     return next(
       new ApiError(
@@ -164,10 +169,10 @@ exports.protect = asyncHandler(async (req, res, next) => {
     );
   }
 
-  //verify token (no change happens, expired token)
   const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+  console.log("Decoded:", decoded); // ADD THIS
   //check if user exists
-  const currentUser = await User.findById(decoded.userId.userId);
+  const currentUser = await User.findById(decoded.userId);
   if (!currentUser) {
     return next(
       new ApiError(
@@ -292,7 +297,7 @@ exports.loginByMail = asyncHandler(async (req, res, next) => {
   }
 
   // User is verified - return successful login
-  const authToken = createToken({ userId: user._id });
+  const authToken = createToken(user._id);
   user.vertified = false;
   user.save({ validateBeforeSave: false });
   const userResponse = { ...user._doc };
@@ -366,7 +371,7 @@ exports.verifyLogin = asyncHandler(async (req, res, next) => {
   user.loginToken = { token: null, expiresAt: null };
   await user.save({ validateBeforeSave: false });
 
-  const authToken = createToken({ userId: user._id });
+  const authToken = createToken(user._id);
 
   const userResponse = { ...user._doc };
   delete userResponse.password;
