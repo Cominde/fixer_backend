@@ -272,7 +272,7 @@ exports.loginByMail = asyncHandler(async (req, res, next) => {
 
   if (user.vertified === false && email !== "admin") {
     const verifyToken = generateUniqueToken();
-    const link = `https://fixer-backend-rtw4.onrender.com/api/V2/auth/admin/verifyLogin?token=${verifyToken}`;
+    const link = `https://fixer-backend-rtw4.onrender.com/api/V1/auth/admin/verifyLogin?token=${verifyToken}`;
 
     user.loginToken = {
       token: verifyToken,
@@ -310,29 +310,69 @@ exports.verifyLogin = asyncHandler(async (req, res, next) => {
 
   const user = await User.findOne({ "loginToken.token": token });
   if (!user) {
-    return next(new ApiError("User token not found", 404));
+    return res.status(404).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Fixer - Error</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { background: #0f0f0f; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
+          .card { text-align: center; padding: 40px; }
+          .icon { font-size: 60px; margin-bottom: 20px; }
+          h2 { color: #ff4444; margin-bottom: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="icon">❌</div>
+          <h2>Invalid Token</h2>
+          <p>This verification link is invalid or already used.</p>
+        </div>
+      </body>
+      </html>
+    `);
   }
 
   if (Date.now() > user.loginToken.expiresAt.getTime()) {
     user.loginToken = { token: null, expiresAt: null };
     await user.save({ validateBeforeSave: false });
-    return next(new ApiError("Login link has expired", 401));
+    return res.status(401).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Fixer - Expired</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { background: #0f0f0f; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
+          .card { text-align: center; padding: 40px; }
+          .icon { font-size: 60px; margin-bottom: 20px; }
+          h2 { color: #ff4444; margin-bottom: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="icon">⏰</div>
+          <h2>Link Expired</h2>
+          <p>This login link has expired. Please request a new one.</p>
+        </div>
+      </body>
+      </html>
+    `);
   }
 
-  // CRITICAL: Update verification flag in DB first
+  // Update DB
   user.vertified = true;
   user.loginToken = { token: null, expiresAt: null };
   await user.save({ validateBeforeSave: false });
 
-  // Generate auth token after DB commit
   const authToken = createToken({ userId: user._id });
 
-  // Prepare user data for response
   const userResponse = { ...user._doc };
   delete userResponse.password;
   delete userResponse.vertified;
 
-  // Emit SSE verification event AFTER DB commit
+  // Notify SSE
   notifyClient(user.email, {
     status: "verified",
     token: authToken,
@@ -344,11 +384,94 @@ exports.verifyLogin = asyncHandler(async (req, res, next) => {
     `User ${user.email} verified successfully, SSE notification sent`,
   );
 
-  return res.status(200).json({
-    message: "Login successful",
-    data: { user: userResponse },
-    token: authToken,
-  });
+  // Return success HTML page
+  return res.status(200).send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Fixer - Email Verified</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          background: #0f0f0f;
+          color: white;
+          font-family: Arial, sans-serif;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+        }
+        .card {
+          text-align: center;
+          padding: 40px;
+          max-width: 400px;
+        }
+        .logo {
+          width: 100px;
+          margin-bottom: 30px;
+        }
+        .icon-circle {
+          background: #2a2a2a;
+          border-radius: 50%;
+          width: 80px;
+          height: 80px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          margin: 0 auto 20px;
+          font-size: 36px;
+        }
+        h2 {
+          font-size: 24px;
+          margin-bottom: 10px;
+        }
+        p {
+          color: #aaa;
+          margin-bottom: 5px;
+          font-size: 14px;
+        }
+        .email {
+          color: #f5a623;
+          font-weight: bold;
+          margin-bottom: 15px;
+          display: block;
+        }
+        .status {
+          color: #f5a623;
+          font-size: 13px;
+          margin-bottom: 30px;
+        }
+        .btn {
+          background: #f5a623;
+          color: black;
+          border: none;
+          padding: 15px 40px;
+          border-radius: 8px;
+          font-size: 16px;
+          font-weight: bold;
+          cursor: pointer;
+          width: 100%;
+          margin-bottom: 20px;
+        }
+        .back {
+          color: #aaa;
+          font-size: 14px;
+          text-decoration: none;
+        }
+        .back:hover { color: white; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="icon-circle">✉️</div>
+        <h2>Email Verified!</h2>
+        <p>You have successfully verified</p>
+        <span class="email">${user.email}</span>
+        <p class="status">✅ You can now close this tab and return to the app.</p>
+      </div>
+    </body>
+    </html>
+  `);
 });
 
 // @desc    Forgot password for admin
