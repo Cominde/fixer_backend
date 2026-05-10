@@ -2,22 +2,23 @@ const jwt = require("jsonwebtoken");
 
 // Middleware to verify JWT token
 exports.verifyToken = (req, res, next) => {
-  const token = req.headers["authorization"]; // Assuming token is passed in the Authorization header
+  const authHeader = req.headers["authorization"];
 
-  if (!token) {
+  if (!authHeader) {
     return res
       .status(401)
       .json({ message: "Access denied. No token provided." });
   }
 
+  // Extract token - handle both "Bearer token" and raw token
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : authHeader;
+
   try {
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY); // Use your own secret key here
-
-    // Attach decoded payload to request object
-    req.user = decoded;
-
-    // Move to the next middleware
+    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+    console.log(decoded.userId.userId);
+    req.user = { _id: decoded.userId.userId }; // Set req.user with _id
     next();
   } catch (error) {
     if (error.name === "TokenExpiredError") {

@@ -42,3 +42,29 @@ const syncPasswordsToCards = async () => {
 };
 
 syncPasswordsToCards().catch(console.error);
+
+/*
+const syncPasswordsToCards = async () => {
+  // Connect to DB first
+  await mongoose.connect(process.env.DB_URL);
+  console.log("✅ Connected to DB");
+
+  const users = await User.find({ password: { $exists: true } });
+
+  for (const user of users) {
+    for (const carSubDoc of user.car) {
+      await Car.updateOne(
+        { _id: carSubDoc.id },
+        { $set: { generatedPassword: user.password } },
+      );
+      console.log(`✅ Car ${carSubDoc.id} updated from user ${user._id}`);
+    }
+  }
+
+  console.log("🎉 Done syncing all passwords");
+  await mongoose.disconnect();
+  console.log("🔌 Disconnected from DB");
+};
+
+syncPasswordsToCards().catch(console.error);
+*/

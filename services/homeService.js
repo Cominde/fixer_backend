@@ -1,7 +1,9 @@
 const Inventory = require("../models/Inventory");
 const Repairing = require("../models/repairingModel");
 const Car = require("../models/Car");
+const User = require("../models/userModel");
 //const slugify = require("slugify");
+const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
 const asyncHandler = require("express-async-handler");
 
@@ -15,7 +17,7 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
 
   if (!car) {
     return next(
-      new apiError(`Can't find car for this car number ${carNumber}`, 404)
+      new apiError(`Can't find car for this car number ${carNumber}`, 404),
     );
   }
 
@@ -54,3 +56,8 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
     },
   });
 });
+
+// @desc Change user photo
+// @Route GET /api/v1/Home/changePhoto
+// @access Public
+exports.cahngeUserPhoto = factory.updateOne(User);

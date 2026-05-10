@@ -17,14 +17,16 @@ exports.createReport = asyncHandler(async (req, res, next) => {
 
   const date = getUTCDate(year, month - 1);
 
-  const oldReport = await MonthlyMoneyReport.findOneAndDelete({
+  const oldReport = await MonthlyMoneyReport.findOne({
     date: {
       $gte: date,
       $lt: getUTCDate(year, month),
     },
   });
 
-  
+  if (oldReport) {
+    res.status(200).json({ data: oldReport });
+  } else {
     const repairs = await Repair.find({
       createdAt: {
         $gte: date,
@@ -64,7 +66,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
 
     res.status(201).json({ data: Money });
   }
-);
+});
 
 // @desc get all a monthly Report
 // @Route get /api/v1/monthlyReport

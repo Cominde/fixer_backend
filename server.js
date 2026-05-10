@@ -4,11 +4,15 @@ const dotenv = require("dotenv");
 const morgan = require("morgan");
 const cron = require("node-cron");
 const axios = require("axios");
-const Car = require("./models/Car");
 
 dotenv.config({ path: "config.env" });
 const apiError = require("./utils/apiError");
 const dbconnection = require("./config/database");
+
+const { runBackup } = require("./utils/for_backup/backup");
+///swagger
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./config/swagger");
 //const categoryRoute = require("./routes/categoryRoutes");
 //const SubCategoryRoute = require("./routes/subCategoryRoutes");
 const GarageRoute = require("./routes/GarageRoute");
@@ -22,11 +26,15 @@ const MonthlyReport = require("./routes/monthlyReportRoute");
 const CategoryCode = require("./routes/CategoryCodeRoute");
 const appVersion = require("./routes/appVersionRoute");
 const globalError = require("./middlewares/errorMiddleWare");
+const ClearCarData = require("./routes/ClearCarDataRoute");
+const Notification = require("./routes/notificationRoute");
+const SSERoute = require("./utils/sse/sseRoute");
 
 //db connection
 dbconnection();
 // express app
 const app = express();
+
 app.use(
   cors({
     origin: true,
@@ -41,23 +49,38 @@ if (process.env.NODE_ENV == "development") {
   app.use(morgan("dev"));
   console.log(` mode ${process.env.NODE_ENV}`);
 }
-
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: "Fixer API Docs",
+    customCss: ".swagger-ui .topbar { display: none }",
+  }),
+);
 // Routes
-app.use("/api/V1/Inventort", InvRoute);
-app.use("/api/V1/Garage", GarageRoute);
-app.use("/api/V1/User", userRoute);
-app.use("/api/V1/auth", authRoute);
-app.use("/api/V1/repairing", repairingRoute);
-app.use("/api/V1/Home", homeRoute);
-app.use("/api/V1/Worker", workerRoute);
-app.use("/api/V1/MonthlyReport", MonthlyReport);
-app.use("/api/V1/Category", CategoryCode);
-app.use("/api/V1/appVersion", appVersion);
+app.use("/api/V2/Inventort", InvRoute);
+app.use("/api/V2/Garage", GarageRoute);
+app.use("/api/V2/User", userRoute);
+app.use("/api/V2/auth", authRoute);
+app.use("/api/V2/repairing", repairingRoute);
+app.use("/api/V2/Home", homeRoute);
+app.use("/api/V2/Worker", workerRoute);
+app.use("/api/V2/MonthlyReport", MonthlyReport);
+app.use("/api/V2/Category", CategoryCode);
+app.use("/api/V2/appVersion", appVersion);
+app.use("/api/V2/ClearCarData", ClearCarData);
+app.use("/api/V2/Notification", Notification);
+app.use("/api/V2/SSE", SSERoute);
 // ping api
 app.get("/api/ping", (req, res) => {
   res.status(200).send("Server is alive!");
 });
+const path = require("path");
 
+// Must be served at exactly this URL path — browser looks for it here automatically
+app.get("/firebase-messaging-sw.js", (req, res) => {
+  res.sendFile(path.join(__dirname, "firebase-messaging-sw.js"));
+});
 app.all("*", (req, res, next) => {
   //create error and send it to error handling middleware
   // eslint-disable-next-line new-cap
@@ -104,39 +127,4 @@ cron.schedule("*/14 * * * *", () => {
         console.error("Error setting up the request:", error.message);
       }
     });
-});
-
-const checkAndUpdateCarStatus = async () => {
-  try {
-    const currentDate = new Date();
-
-    // Find cars that need maintenance
-    const carsToRepair = await Car.find({
-      nextRepairDate: { $lte: currentDate },
-    });
-
-    if (carsToRepair.length > 0) {
-      console.log("Updating status for cars that need maintenance...");
-
-      // Update the status of each car to "Need to check"
-      const updateResult = await Car.updateMany(
-        { nextRepairDate: { $lte: currentDate } },
-        { $set: { State: "Need to check" } },
-      );
-
-      console.log(
-        `${updateResult.modifiedCount} car(s) updated to "Need to check".`,
-      );
-    } else {
-      console.log("No cars need maintenance today.");
-    }
-  } catch (error) {
-    console.error("Error checking and updating car status:", error);
-  }
-};
-
-// Schedule the job to run daily at 12:30 AM
-cron.schedule("30 0 * * *", async () => {
-  console.log("Running daily car maintenance check...");
-  await checkAndUpdateCarStatus();
 });

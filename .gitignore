@@ -1,2 +1,6 @@
 node_modules/
 
+config.env
+
+fixer_backend/
+config/serviceAccountKey.json

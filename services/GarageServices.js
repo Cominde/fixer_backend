@@ -1,17 +1,22 @@
+const { Jimp } = require("jimp");
+const { v2: cloudinary } = require("cloudinary");
+const axios = require("axios");
 const Car = require("../models/Car");
 const Repairing = require("../models/repairingModel");
 const User = require("../models/userModel");
-//const slugify = require("slugify");
 const apiError = require("../utils/apiError");
 const asyncHandler = require("express-async-handler");
 const factory = require("./handlersFactory");
 const ApiFeatures = require("../utils/apiFeatures");
 const CategoryCode = require("../models/categoryCode");
-const { normalizeCarNumber } = require("../utils/carNumberCheck");
 
-// @desc add car
-// @Route GET /api/v1/Garage
-// @access private
+const searchService = require("./searchService");
+const { normalizeCarNumber } = require("../utils/carNumberCheck");
+const { removeBgExternal } = require("../utils/backgroundRemover");
+
+// @desc    Add car
+// @route   POST /api/v1/Garage/:id
+// @access  Private
 exports.addCar = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const carNumber = normalizeCarNumber(req.body.carNumber);
@@ -31,8 +36,7 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     manually,
   } = req.body;
 
-  let newCarCode;
-
+  // Check duplicate carNumber
   const existingCar = await Car.findOne({ carNumber });
   if (existingCar) {
     return next(
@@ -43,6 +47,7 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     );
   }
 
+  // Check duplicate chassisNumber
   if (chassisNumber) {
     const existingCarWithChassis = await Car.findOne({ chassisNumber });
     if (existingCarWithChassis) {
@@ -55,6 +60,7 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     }
   }
 
+  // Check duplicate motorNumber
   if (motorNumber) {
     const existingCarWithMotor = await Car.findOne({ motorNumber });
     if (existingCarWithMotor) {
@@ -67,6 +73,7 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     }
   }
 
+  // Generate car code
   const categoryCode = await CategoryCode.findOne({ category: clientType });
   if (!categoryCode) {
     return next(
@@ -74,7 +81,8 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     );
   }
 
-  if (manually === true || manually === "true") {
+  let newCarCode;
+  if (manually === "True" || manually === "true") {
     const carCode = req.body.carCode;
     const parsedCarCode = parseInt(carCode, 10);
     if (isNaN(parsedCarCode) || !Number.isInteger(parsedCarCode)) {
@@ -83,7 +91,6 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     newCarCode = categoryCode.code + carCode;
   } else {
     const regex = new RegExp("^" + categoryCode.code + "\\d+$", "i");
-
     const cars = await Car.aggregate([
       { $match: { generatedCode: regex } },
       {
@@ -121,6 +128,7 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     }
   }
 
+  // Check user exists
   const user = await User.findById(id);
   if (!user) {
     return next(
@@ -131,11 +139,7 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const existingCarCode = await Car.findOne({ generatedCode: newCarCode });
-  if (existingCarCode) {
-    return next(new apiError(`Car code ${newCarCode} already exists`, 400));
-  }
-
+  // Create car
   const newCar = await Car.create({
     ownerName: user.name,
     carNumber,
@@ -167,37 +171,19 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     category,
     model,
   });
-
   await user.save({ validateBeforeSave: false });
 
-  return res.status(201).json({ data: { newCar, user } });
+  res.status(201).json({ data: { newCar, user } });
 });
 
-// @desc Search for a car by car number
-// @Route GET /api/v1/Garage/:carNumber
-// @access private
-/*exports.searchCarByNumber = asyncHandler(async (req, res, next) => {
-  const { carNumber } = req.params;
-
-  const car = await Car.findOne({ carNumber });
-
-  if (!car) {
-    return next(
-      new apiError(`Can't find car for this car Number ${carNumber}`, 404)
-    );
-  }
-
-  res.status(201).json({ data: car });
-});*/
-
-// @desc Get list of all Cars
-// @Route GET /api/v1/Garage
-// @access public
+// @desc    Get list of all cars
+// @route   GET /api/v1/Garage
+// @access  Public
 exports.getCars = asyncHandler(async (req, res) => {
   const nonAdminUsers = await User.find({ role: "user" }).select("name");
   const nonAdminUsernames = nonAdminUsers.map((user) => user.name);
 
-  let filter = { ownerName: { $in: nonAdminUsernames } };
+  const filter = { ownerName: { $in: nonAdminUsernames } };
 
   const documentsCounts = await Car.countDocuments(filter);
   const apiFeatures = new ApiFeatures(Car.find(filter), req.query)
@@ -218,16 +204,15 @@ exports.getCars = asyncHandler(async (req, res) => {
     .json({ results: documents.length, paginationResult, data: documents });
 });
 
-// @desc spacific car by id
-// @Route GET /api/v1/Garage/:id
-// @access public
+// @desc    Get specific car by id
+// @route   GET /api/v1/Garage/:id
+// @access  Public
 exports.getCar = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
 
   const car = await Car.findById(id);
-
   if (!car) {
-    return next(new apiError(`Can't find car with this id  ${id}`, 404));
+    return next(new apiError(`Can't find car with this id ${id}`, 404));
   }
 
   const repairing = await Repairing.findOne({
@@ -238,71 +223,53 @@ exports.getCar = asyncHandler(async (req, res, next) => {
     carNumber: { $in: car.carNumber },
     complete: false,
   });
+
   res.status(200).json({ data: { car, repairing, currentRepair } });
 });
 
-// @desc Get list of repairing Cars
-// @Route GET /api/v1/Garage/repairing
-// @access public
+// @desc    Get list of repairing cars
+// @route   GET /api/v1/Garage/repairing
+// @access  Public
 exports.getRepairingCars = asyncHandler(async (req, res, next) => {
-  let filter = { State: "Repair" };
-  if (req.filterObj) {
-    filter = req.filterObj;
-  }
+  const filter = req.filterObj || { State: "Repair" };
 
-  const documentsCounts = await Car.countDocuments();
+  const documentsCounts = await Car.countDocuments(filter);
   const apiFeatures = new ApiFeatures(Car.find(filter), req.query)
     .paginate(documentsCounts)
     .filter()
     .search()
     .limitFields();
 
-  let { mongooseQuery, paginationResult } = apiFeatures;
+  const { mongooseQuery, paginationResult } = apiFeatures;
   let documents = await mongooseQuery;
+
+  if (!documents) {
+    return next(new apiError(`There are no cars in repairs`, 404));
+  }
 
   documents = documents.sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
   );
-  const cars = await Car.find(filter);
-  if (paginationResult.limit > cars.length) {
-    paginationResult.numberOfPages = 1;
-  } else {
-    paginationResult.numberOfPages = Math.ceil(
-      cars.length / paginationResult.limit,
-    );
-  }
-  /*let filter2 = { State: "Repair" };
-  if (req.filterObj) {
-    filter = req.filterObj;
-  }
-  const documentsCounts2 = await Car.countDocuments();
-  const apiFeatures2 = new ApiFeatures(Car.find(filter2), req.query)
-    .paginate(documentsCounts2)
-    .filter()
-    .search()
-    .limitFields();
 
-  const { mongooseQuery2, paginationResult2 } = apiFeatures2;
-  let documents2 = await mongooseQuery2;
-*/
-  if (documents) {
-    res
-      .status(200)
-      .json({ results: documents.length, paginationResult, data: documents });
-  } else {
-    return next(new apiError(`there is no cars in repaires`, 404));
-  }
+  // FIX: use documentsCounts instead of extra Car.find() query
+  paginationResult.numberOfPages = Math.ceil(
+    documentsCounts / paginationResult.limit,
+  );
+
+  res
+    .status(200)
+    .json({ results: documents.length, paginationResult, data: documents });
 });
 
-// @desc Search for a car by car number
-// @Route GET /api/v1/Garage/:carNumber
-// @access private
+// @desc    Set car repair state
+// @route   PUT /api/v1/Garage/repair/:carNumber
+// @access  Private
 exports.makeCarInRepair = asyncHandler(async (req, res, next) => {
   const { carNumber } = req.params;
   const { repairing } = req.body;
 
-  if (repairing == undefined || repairing == null) {
-    return next(new apiError(`must make value for repairing`, 400));
+  if (repairing === undefined || repairing === null) {
+    return next(new apiError(`Must provide a value for repairing`, 400));
   }
 
   const car = await Car.findOneAndUpdate(
@@ -312,59 +279,34 @@ exports.makeCarInRepair = asyncHandler(async (req, res, next) => {
   );
 
   if (!car) {
-    return next(new apiError(`Can't find product for this id ${id}`, 404));
+    // FIX: was referencing undefined `id`, now uses carNumber
+    return next(
+      new apiError(`Can't find car with this car number ${carNumber}`, 404),
+    );
   }
 
   res.status(200).json({ data: car });
 });
 
-// @desc upadete spacific car
-// @Route PUT /api/v1/Garage/:id
-// @access private
+// @desc    Update specific car
+// @route   PUT /api/v1/Garage/:id
+// @access  Private
 exports.updateCar = factory.updateOne(Car);
 
-// @desc    search for cars
-// @route   get /api/v1/Garage/search
+// @desc    Search for all cars
+// @route   GET /api/v1/Garage/search/:searchString
 // @access  Private
 exports.searchForallCars = asyncHandler(async (req, res, next) => {
   const { searchString } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const skip = (page - 1) * limit;
-  let query = Car.find();
 
-  if (searchString) {
-    const schema = Car.schema;
-    const paths = Object.keys(schema.paths);
-    /*console.log("Path Types:");
-    paths.forEach((path) => {
-      console.log(`${path}: ${schema.paths[path].instance}`);
-    });*/
-    for (let i = 0; i < paths.length; i++) {
-      const orConditions = paths
-        .filter(
-          (path) =>
-            schema.paths[path].instance === "String" && //filter only string type parameters
-            (path === "ownerName" ||
-              path === "carNumber" ||
-              path === "chassisNumber" ||
-              path === "model" ||
-              path === "brand" ||
-              path === "motorNumber" ||
-              path === "generatedCode"), //filter specific fields for search
-        )
-        .map((path) => ({
-          [path]: { $regex: searchString, $options: "i" },
-        }));
-
-      //add or condition to the query
-      query = query.or(orConditions);
-    }
-  }
-  const documents = await query
-    .sort({ lastRepairDate: -1 })
-    .skip(skip)
-    .limit(limit);
+  const { documents, paginationResult } = await searchService({
+    Model: Car,
+    searchString,
+    page,
+    limit,
+  });
 
   if (!documents || documents.length === 0) {
     return next(
@@ -374,86 +316,47 @@ exports.searchForallCars = asyncHandler(async (req, res, next) => {
       ),
     );
   }
-  const totalDocuments = await Car.countDocuments(query.getQuery());
-  const totalPages = Math.ceil(totalDocuments / limit);
-  res.status(200).json({
-    results: documents.length,
-    paginationResult: {
-      currentPage: page,
-      limit: limit,
-      numberOfPages: totalPages,
-    },
-    data: documents,
-  });
+
+  res
+    .status(200)
+    .json({ results: documents.length, paginationResult, data: documents });
 });
 
-// @desc    search for reparing cars
-// @route   get /api/v1/Garage/search/repairing/:searchString
+// @desc    Search for repairing cars
+// @route   GET /api/v1/Garage/search/repairing/:searchString
 // @access  Private
 exports.searchForRepairingCars = asyncHandler(async (req, res, next) => {
   const { searchString } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const skip = (page - 1) * limit;
 
-  let query = Car.find({ State: "Repair" });
-
-  if (searchString) {
-    const schema = Car.schema;
-    const paths = Object.keys(schema.paths);
-
-    const orConditions = paths
-      .filter(
-        (path) =>
-          schema.paths[path].instance === "String" &&
-          (path === "ownerName" ||
-            path === "carNumber" ||
-            path === "chassisNumber" ||
-            path === "model" ||
-            path === "brand" ||
-            path === "motorNumber" ||
-            path === "generatedCode"),
-      )
-      .map((path) => ({
-        [path]: { $regex: searchString, $options: "i" },
-      }));
-
-    query = query.or(orConditions);
-  }
-
-  const documents = await query
-    .sort({ lastRepairDate: -1 })
-    .skip(skip)
-    .limit(limit);
+  const { documents, paginationResult } = await searchService({
+    Model: Car,
+    searchString,
+    baseFilter: { State: "Repair" },
+    page,
+    limit,
+  });
 
   if (!documents || documents.length === 0) {
     return next(
       new apiError(
-        `No document found for the search string "${searchString}"`,
+        `No document found for the search string ${searchString}`,
         404,
       ),
     );
   }
 
-  const totalDocuments = await Car.countDocuments(query.getQuery());
-  const totalPages = Math.ceil(totalDocuments / limit);
-  res.status(200).json({
-    results: documents.length,
-    paginationResult: {
-      currentPage: page,
-      limit: limit,
-      numberOfPages: totalPages,
-    },
-    data: documents,
-  });
+  res
+    .status(200)
+    .json({ results: documents.length, paginationResult, data: documents });
 });
 
-// @desc    delete car
-// @route   get /api/v1/Garage/delte/:id
+// @desc    Delete car
+// @route   DELETE /api/v1/Garage/:id
 // @access  Private
-
 exports.deleteCar = asyncHandler(async (req, res, next) => {
-  const id = req.params.id;
+  const { id } = req.params;
 
   const expectedCar = await Car.findById(id);
   if (!expectedCar) {
@@ -464,16 +367,187 @@ exports.deleteCar = asyncHandler(async (req, res, next) => {
   if (!user) {
     return next(new apiError(`Can't find owner for this car`, 404));
   }
+
   if (user.car.length > 1) {
     user.car = user.car.filter((c) => c.carNumber !== expectedCar.carNumber);
     await user.save({ validateBeforeSave: false });
-
     await expectedCar.deleteOne();
-
-    res.status(200).json(`Car deleted successfully`);
+    res.status(200).json({ message: "Car deleted successfully" });
   } else {
     await user.deleteOne();
     await expectedCar.deleteOne();
-    res.status(200).json(`The user deleted successfully `);
+    res.status(200).json({ message: "User and car deleted successfully" });
   }
+});
+
+// @desc    get unique brands of car
+// @route   get /api/v2/getCarsInDB?brand&category&model&color
+// @access  public
+exports.getUniqueBrands = asyncHandler(async (req, res, next) => {
+  const { brand, category, model, color } = req.query;
+
+  const cleanResults = (arr) => [
+    ...new Set(
+      arr
+        .map((item) => item.replace(/^[-\s]+|[-\s]+$/g, "").trim())
+        .filter((item) => item !== ""),
+    ),
+  ];
+
+  if (!brand) {
+    const uniqueBrands = await Car.distinct("brand");
+    return res.status(200).json({ data: cleanResults(uniqueBrands) });
+  }
+
+  if (brand && !category) {
+    const uniqueCategories = await Car.distinct("category", { brand });
+    return res.status(200).json({ data: cleanResults(uniqueCategories) });
+  }
+
+  if (brand && category && !model) {
+    const uniqueModels = await Car.distinct("model", { brand, category });
+    return res.status(200).json({ data: cleanResults(uniqueModels) });
+  }
+
+  if (brand && category && model && !color) {
+    const uniqueColors = await Car.distinct("color", {
+      brand,
+      category,
+      model,
+    });
+    return res.status(200).json({ data: cleanResults(uniqueColors) });
+  }
+
+  if (brand && category && model && color) {
+    const cars = await Car.find({ brand, category, model, color });
+    return res.status(200).json({ data: cars });
+  }
+
+  return next(new apiError("enter the car details", 400));
+});
+
+// @desc    set cars images with imagin based on brand , category , model and color
+// @route   put /api/v2/setCarImg
+// @access  public
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+exports.setCarImg = asyncHandler(async (req, res, next) => {
+  const { method, brand, model, category, color, back } = req.body;
+
+  if (!method || !brand || !model || !category || !color) {
+    return next(
+      new apiError(
+        "method, brand, model, category and color are required",
+        400,
+      ),
+    );
+  }
+
+  const car = await Car.findOne({ brand, model, category });
+  if (!car) {
+    return next(
+      new apiError(
+        `Can't find car with brand: ${brand}, model: ${model}, category: ${category}`,
+        404,
+      ),
+    );
+  }
+
+  let result;
+
+  if (method === "generate") {
+    const imageUrl = new URL("https://cdn.imagin.studio/getimage");
+    Object.entries({
+      customer: "img",
+      make: brand,
+      modelFamily: category,
+      modelYear: model,
+      modelVariant: "sedan" || back,
+      paintId: `color-${color}`,
+      paintDescription: color,
+      countryCode: "EGY",
+      zoomType: "fullscreen",
+      angle: "28",
+      fileType: "png",
+    }).forEach(([k, v]) => imageUrl.searchParams.append(k, v));
+
+    const response = await axios.get(imageUrl.toString(), {
+      responseType: "arraybuffer",
+      headers: { Referer: "https://www.imagin.studio" },
+    });
+
+    const image = await Jimp.read(Buffer.from(response.data));
+    image.scan(0, 0, image.bitmap.width, image.bitmap.height, (px, py, idx) => {
+      const r = image.bitmap.data[idx];
+      const g = image.bitmap.data[idx + 1];
+      const b = image.bitmap.data[idx + 2];
+      const a = image.bitmap.data[idx + 3];
+      if (a < 200 || (r + g + b) / 3 > 200) {
+        image.bitmap.data[idx] = Math.min(255, r + 40);
+        image.bitmap.data[idx + 1] = Math.min(255, g + 40);
+        image.bitmap.data[idx + 2] = Math.min(255, b + 40);
+        image.bitmap.data[idx + 3] = 255;
+      }
+    });
+    const cleanBuffer = await image.getBuffer("image/jpeg");
+    const bgRemovedBuffer = await removeBgExternal(cleanBuffer);
+    const publicId = `${brand}_${model}_${category}_${color}`
+      .toLowerCase()
+      .replace(/\s+/g, "-");
+    result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "cars",
+          public_id: publicId,
+          overwrite: true,
+          resource_type: "image",
+        },
+        (error, data) => (error ? reject(error) : resolve(data)),
+      );
+      stream.end(bgRemovedBuffer);
+    });
+  } else if (method === "upload") {
+    if (!req.file) {
+      return next(
+        new apiError("Image file is required when method is upload", 400),
+      );
+    }
+    const bgRemovedBuffer = await removeBgExternal(req.file.buffer);
+
+    result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "cars",
+          transformation: [
+            {
+              width: 1920,
+              height: 1080,
+              crop: "fill",
+              gravity: "center",
+            },
+          ],
+        },
+        (error, data) => (error ? reject(error) : resolve(data)),
+      );
+      stream.end(bgRemovedBuffer);
+    });
+  } else {
+    return next(new apiError("method must be generate or upload", 400));
+  }
+
+  // Save image URL and publicId to car model
+  car.image = result.secure_url;
+  car.imagePublicId = result.public_id;
+  await car.save({ validateBeforeSave: false });
+
+  res.status(200).json({
+    publicId: result.public_id,
+    url: result.secure_url,
+    width: result.width,
+    height: result.height,
+    bytes: result.bytes,
+  });
 });

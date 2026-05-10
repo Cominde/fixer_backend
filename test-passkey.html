@@ -1,0 +1,1097 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fixer Admin — Passkey Test</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0a0a0f;
+        --surface: #13131a;
+        --surface2: #1c1c28;
+        --border: #2a2a3d;
+        --accent: #6c63ff;
+        --accent2: #00d4aa;
+        --danger: #ff4d6d;
+        --warn: #ffb347;
+        --text: #e8e8f0;
+        --muted: #7070a0;
+        --success: #00d4aa;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Syne", sans-serif;
+        min-height: 100vh;
+        padding: 40px 20px;
+        background-image:
+          radial-gradient(
+            ellipse 80% 50% at 50% -20%,
+            rgba(108, 99, 255, 0.15),
+            transparent
+          ),
+          radial-gradient(
+            ellipse 40% 40% at 90% 90%,
+            rgba(0, 212, 170, 0.08),
+            transparent
+          );
+      }
+
+      .container {
+        max-width: 860px;
+        margin: 0 auto;
+      }
+
+      header {
+        text-align: center;
+        margin-bottom: 48px;
+      }
+
+      header .badge {
+        display: inline-block;
+        background: rgba(108, 99, 255, 0.15);
+        border: 1px solid rgba(108, 99, 255, 0.4);
+        color: var(--accent);
+        font-family: "DM Mono", monospace;
+        font-size: 11px;
+        letter-spacing: 2px;
+        padding: 4px 14px;
+        border-radius: 20px;
+        margin-bottom: 16px;
+        text-transform: uppercase;
+      }
+
+      header h1 {
+        font-size: clamp(28px, 5vw, 48px);
+        font-weight: 800;
+        letter-spacing: -1px;
+        background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 8px;
+      }
+
+      header p {
+        color: var(--muted);
+        font-size: 14px;
+        font-family: "DM Mono", monospace;
+      }
+
+      /* Steps */
+      .steps {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 40px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+      }
+
+      .step-pill {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 8px 16px;
+        font-size: 12px;
+        color: var(--muted);
+        transition: all 0.3s;
+        cursor: default;
+      }
+
+      .step-pill.active {
+        border-color: var(--accent);
+        color: var(--text);
+        background: rgba(108, 99, 255, 0.1);
+      }
+
+      .step-pill.done {
+        border-color: var(--accent2);
+        color: var(--accent2);
+        background: rgba(0, 212, 170, 0.08);
+      }
+
+      .step-pill .num {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-family: "DM Mono", monospace;
+        font-weight: 500;
+      }
+
+      .step-pill.active .num {
+        background: var(--accent);
+        color: #fff;
+      }
+      .step-pill.done .num {
+        background: var(--accent2);
+        color: #000;
+      }
+
+      /* Cards */
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px;
+        margin-bottom: 16px;
+        transition: border-color 0.3s;
+      }
+
+      .card:hover {
+        border-color: rgba(108, 99, 255, 0.3);
+      }
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .card-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        background: rgba(108, 99, 255, 0.15);
+      }
+
+      .card-title {
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .card-sub {
+        font-size: 11px;
+        color: var(--muted);
+        font-family: "DM Mono", monospace;
+        margin-top: 2px;
+      }
+
+      /* Inputs */
+      .field {
+        margin-bottom: 14px;
+      }
+      .field label {
+        display: block;
+        font-size: 11px;
+        color: var(--muted);
+        font-family: "DM Mono", monospace;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+      }
+
+      .field input {
+        width: 100%;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-family: "DM Mono", monospace;
+        font-size: 13px;
+        padding: 10px 14px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+
+      .field input:focus {
+        border-color: var(--accent);
+      }
+      .field input::placeholder {
+        color: var(--muted);
+      }
+
+      /* Buttons */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 22px;
+        border-radius: 8px;
+        font-family: "Syne", sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+        letter-spacing: 0.3px;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+      }
+      .btn-primary:hover {
+        background: #7c74ff;
+        transform: translateY(-1px);
+      }
+      .btn-primary:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .btn-success {
+        background: var(--accent2);
+        color: #000;
+      }
+      .btn-success:hover {
+        background: #00eabc;
+        transform: translateY(-1px);
+      }
+      .btn-success:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .btn-danger {
+        background: transparent;
+        color: var(--danger);
+        border: 1px solid var(--danger);
+      }
+      .btn-danger:hover {
+        background: rgba(255, 77, 109, 0.1);
+      }
+
+      .btn-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 6px;
+      }
+
+      /* Log */
+      .log-box {
+        background: #080810;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px;
+        min-height: 80px;
+        max-height: 200px;
+        overflow-y: auto;
+        font-family: "DM Mono", monospace;
+        font-size: 12px;
+        line-height: 1.7;
+        margin-top: 14px;
+      }
+
+      .log-entry {
+        display: flex;
+        gap: 10px;
+      }
+      .log-time {
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+      .log-msg.success {
+        color: var(--success);
+      }
+      .log-msg.error {
+        color: var(--danger);
+      }
+      .log-msg.info {
+        color: var(--accent);
+      }
+      .log-msg.warn {
+        color: var(--warn);
+      }
+      .log-msg.data {
+        color: #c8c8e8;
+      }
+
+      /* Token display */
+      .token-display {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-family: "DM Mono", monospace;
+        font-size: 11px;
+        color: var(--accent2);
+        word-break: break-all;
+        margin-top: 10px;
+        display: none;
+      }
+
+      /* Passkey list */
+      .passkey-item {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .passkey-info {
+        flex: 1;
+      }
+      .passkey-id {
+        font-family: "DM Mono", monospace;
+        font-size: 11px;
+        color: var(--accent);
+        margin-bottom: 4px;
+      }
+      .passkey-meta {
+        font-size: 11px;
+        color: var(--muted);
+        font-family: "DM Mono", monospace;
+      }
+
+      /* Status indicator */
+      .status-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        background: var(--surface2);
+        border-radius: 8px;
+        margin-bottom: 20px;
+        font-family: "DM Mono", monospace;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+      }
+      .dot.green {
+        background: var(--accent2);
+        box-shadow: 0 0 6px var(--accent2);
+      }
+      .dot.red {
+        background: var(--danger);
+      }
+      .dot.pulse {
+        background: var(--accent);
+        animation: pulse 1.2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.5;
+          transform: scale(0.85);
+        }
+      }
+
+      .divider {
+        height: 1px;
+        background: var(--border);
+        margin: 24px 0;
+      }
+
+      .hint {
+        font-size: 11px;
+        color: var(--muted);
+        font-family: "DM Mono", monospace;
+        margin-top: 8px;
+        line-height: 1.6;
+      }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="badge">WebAuthn Testing Lab</div>
+        <h1>Passkey Auth Tester</h1>
+        <p>localhost:4000 · Fixer Admin API</p>
+      </header>
+
+      <!-- Progress steps -->
+      <div class="steps">
+        <div class="step-pill active" id="step1">
+          <span class="num">1</span> Login
+        </div>
+        <div class="step-pill" id="step2">
+          <span class="num">2</span> Register Passkey
+        </div>
+        <div class="step-pill" id="step3">
+          <span class="num">3</span> Login with Passkey
+        </div>
+        <div class="step-pill" id="step4">
+          <span class="num">4</span> Manage Keys
+        </div>
+      </div>
+
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Not connected — login first to begin</span>
+      </div>
+
+      <!-- STEP 1: Password Login -->
+      <div class="card" id="card1">
+        <div class="card-header">
+          <div class="card-icon">🔑</div>
+          <div>
+            <div class="card-title">Step 1 — Password Login</div>
+            <div class="card-sub">POST /api/V2/auth/admin/login</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input
+            type="email"
+            id="email"
+            placeholder="admin@example.com"
+            value="tefamod22@gmail.com"
+          />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="password" placeholder="your password" />
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="loginWithPassword()">
+            🔓 Login
+          </button>
+        </div>
+        <div class="token-display" id="tokenDisplay"></div>
+        <div class="log-box" id="log1"></div>
+      </div>
+
+      <!-- STEP 2: Register Passkey -->
+      <div class="card" id="card2">
+        <div class="card-header">
+          <div class="card-icon">🪪</div>
+          <div>
+            <div class="card-title">Step 2 — Register Face / Passkey</div>
+            <div class="card-sub">
+              POST /api/V2/auth/admin/passkey/register/begin → finish
+            </div>
+          </div>
+        </div>
+        <p class="hint">
+          ⚠️ Requires login first. Your browser will prompt for Face ID /
+          fingerprint / PIN.
+        </p>
+        <div class="divider"></div>
+        <div class="btn-row">
+          <button
+            class="btn btn-primary"
+            id="btnRegister"
+            onclick="registerPasskey()"
+            disabled
+          >
+            🫳 Register Passkey
+          </button>
+        </div>
+        <div class="log-box" id="log2"></div>
+      </div>
+
+      <!-- STEP 3: Passkey Login -->
+      <div class="card" id="card3">
+        <div class="card-header">
+          <div class="card-icon">👁️</div>
+          <div>
+            <div class="card-title">Step 3 — Login with Passkey</div>
+            <div class="card-sub">
+              POST /api/V2/auth/admin/passkey/login/begin → finish
+            </div>
+          </div>
+        </div>
+        <p class="hint">
+          Tests the full passkey login flow as the user would experience it.
+        </p>
+        <div class="divider"></div>
+        <div class="field">
+          <label>Email (for passkey lookup)</label>
+          <input
+            type="email"
+            id="passkeyEmail"
+            placeholder="admin@example.com"
+            value="tefamod22@gmail.com"
+          />
+        </div>
+        <div class="btn-row">
+          <button
+            class="btn btn-success"
+            id="btnPasskeyLogin"
+            onclick="loginWithPasskey()"
+          >
+            🔐 Login with Passkey
+          </button>
+        </div>
+        <div class="log-box" id="log3"></div>
+      </div>
+
+      <!-- STEP 4: Manage -->
+      <div class="card" id="card4">
+        <div class="card-header">
+          <div class="card-icon">⚙️</div>
+          <div>
+            <div class="card-title">Step 4 — Manage Passkeys</div>
+            <div class="card-sub">
+              GET /api/V2/auth/admin/passkey/list · POST /revoke
+            </div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button
+            class="btn btn-primary"
+            id="btnList"
+            onclick="listPasskeys()"
+            disabled
+          >
+            📋 List Passkeys
+          </button>
+        </div>
+        <div id="passkeyList"></div>
+        <div class="log-box" id="log4"></div>
+      </div>
+    </div>
+
+    <script>
+      const BASE = "http://localhost:4000/api/V2";
+      let authToken = null;
+
+      // WebAuthn requires a real hostname, not an IP like 127.0.0.1
+      function getOrigin() {
+        const host = window.location.hostname;
+        if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+          return "http://localhost:" + window.location.port;
+        }
+        return window.location.origin;
+      }
+
+      // Force rpId to 'localhost' — WebAuthn rejects IP addresses as RP ID
+      function patchPublicKeyOptions(options) {
+        if (options.rp) options.rp.id = "localhost";
+        return options;
+      }
+
+      // ─── Logging ───────────────────────────────────────────────
+      function log(boxId, msg, type = "info") {
+        const box = document.getElementById(boxId);
+        const now = new Date().toLocaleTimeString("en", { hour12: false });
+        const entry = document.createElement("div");
+        entry.className = "log-entry";
+        entry.innerHTML = `<span class="log-time">${now}</span><span class="log-msg ${type}">${msg}</span>`;
+        box.appendChild(entry);
+        box.scrollTop = box.scrollHeight;
+      }
+
+      function setStatus(state, text) {
+        const dot = document.getElementById("statusDot");
+        const txt = document.getElementById("statusText");
+        dot.className = "dot " + state;
+        txt.textContent = text;
+      }
+
+      function markStep(stepId, state) {
+        const el = document.getElementById(stepId);
+        el.className = "step-pill " + state;
+      }
+
+      // ─── Helpers ───────────────────────────────────────────────
+      function ab2b64(buffer) {
+        return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      }
+
+      function b64ToUint8(b64) {
+        // Normalize: handle string, object with data array, or Uint8Array
+        let str = normalizeToBase64String(b64);
+        const bin = atob(
+          str.replace(/-/g, "+").replace(/_/g, "/").replace(/\s/g, ""),
+        );
+        return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+      }
+
+      // Safely convert ANY challenge format to a plain base64 string
+      function normalizeToBase64String(value) {
+        if (typeof value === "string") return value;
+        // Buffer-like object: { type: 'Buffer', data: [...] }
+        if (value && value.type === "Buffer" && Array.isArray(value.data)) {
+          return btoa(String.fromCharCode(...value.data));
+        }
+        // ArrayBuffer or Uint8Array
+        if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+          return btoa(
+            String.fromCharCode(
+              ...new Uint8Array(
+                value instanceof ArrayBuffer ? value : value.buffer,
+              ),
+            ),
+          );
+        }
+        // Plain array of numbers
+        if (Array.isArray(value)) {
+          return btoa(String.fromCharCode(...value));
+        }
+        return String(value);
+      }
+
+      function prepareCredentialForServer(cred) {
+        return {
+          id: cred.id,
+          rawId: ab2b64(cred.rawId),
+          type: cred.type,
+          response: {
+            attestationObject: cred.response.attestationObject
+              ? ab2b64(cred.response.attestationObject)
+              : undefined,
+            clientDataJSON: ab2b64(cred.response.clientDataJSON),
+            authenticatorData: cred.response.authenticatorData
+              ? ab2b64(cred.response.authenticatorData)
+              : undefined,
+            signature: cred.response.signature
+              ? ab2b64(cred.response.signature)
+              : undefined,
+            userHandle: cred.response.userHandle
+              ? ab2b64(cred.response.userHandle)
+              : undefined,
+          },
+        };
+      }
+
+      // Convert challenge from server (any format) to ArrayBuffer
+      function challengeToBuffer(challenge) {
+        return b64ToUint8(challenge).buffer;
+      }
+
+      // Safe preview of any value for logging
+      function safePreview(value, len = 30) {
+        const str = normalizeToBase64String(value);
+        return str.substring(0, len) + "...";
+      }
+
+      // ─── Step 1: Password Login ────────────────────────────────
+      async function loginWithPassword() {
+        const email = document.getElementById("email").value;
+        const password = document.getElementById("password").value;
+
+        if (!email || !password) {
+          log("log1", "Please enter email and password", "error");
+          return;
+        }
+
+        setStatus("pulse", "Logging in...");
+        log("log1", `Sending login request for ${email}...`, "info");
+
+        try {
+          const res = await fetch(`${BASE}/auth/admin/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+
+          const data = await res.json();
+
+          if (res.ok && (data.token || data.data?.token)) {
+            authToken = data.token || data.data?.token;
+            log("log1", "✅ Login successful! Token saved.", "success");
+            log("log1", `Token: ${authToken.substring(0, 30)}...`, "data");
+
+            const td = document.getElementById("tokenDisplay");
+            td.style.display = "block";
+            td.textContent = "🔑 " + authToken.substring(0, 60) + "...";
+
+            // Enable other buttons
+            document.getElementById("btnRegister").disabled = false;
+            document.getElementById("btnList").disabled = false;
+
+            setStatus("green", `Authenticated as ${email}`);
+            markStep("step1", "done");
+            markStep("step2", "active");
+          } else {
+            log(
+              "log1",
+              `❌ Login failed: ${data.message || JSON.stringify(data)}`,
+              "error",
+            );
+            setStatus("red", "Login failed");
+          }
+        } catch (err) {
+          log("log1", `❌ Network error: ${err.message}`, "error");
+          setStatus("red", "Network error");
+        }
+      }
+
+      // ─── Step 2: Register Passkey ──────────────────────────────
+      async function registerPasskey() {
+        if (!authToken) {
+          log("log2", "❌ Login first to register a passkey", "error");
+          return;
+        }
+
+        if (!window.PublicKeyCredential) {
+          log("log2", "❌ WebAuthn not supported in this browser", "error");
+          return;
+        }
+
+        setStatus("pulse", "Starting passkey registration...");
+        log("log2", "📡 Calling register/begin...", "info");
+
+        try {
+          // Begin
+          const beginRes = await fetch(
+            `${BASE}/auth/admin/passkey/register/begin`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`,
+              },
+              body: JSON.stringify({ origin: getOrigin() }),
+            },
+          );
+
+          const beginData = await beginRes.json();
+
+          if (!beginRes.ok) {
+            log(
+              "log2",
+              `❌ Begin failed: ${beginData.message || JSON.stringify(beginData)}`,
+              "error",
+            );
+            setStatus("red", "Registration begin failed");
+            return;
+          }
+
+          log("log2", "✅ Challenge received from server", "success");
+
+          let options = beginData.data || beginData;
+          options = patchPublicKeyOptions(options);
+
+          // Debug: log raw challenge type so we can see what server returns
+          const rawChallenge = options.challenge;
+          log(
+            "log2",
+            `Challenge type: ${typeof rawChallenge} | preview: ${safePreview(rawChallenge)}`,
+            "data",
+          );
+
+          // Convert challenge and user.id to ArrayBuffer
+          options.challenge = challengeToBuffer(rawChallenge);
+
+          if (options.user?.id) {
+            options.user.id = b64ToUint8(options.user.id);
+          }
+
+          // Exclude existing credentials
+          if (options.excludeCredentials) {
+            options.excludeCredentials = options.excludeCredentials.map(
+              (c) => ({
+                ...c,
+                id: b64ToUint8(c.id),
+              }),
+            );
+          }
+
+          log("log2", "🪪 Browser prompting for biometrics / PIN...", "warn");
+
+          // Call WebAuthn API — browser shows Face ID / fingerprint / PIN
+          const credential = await navigator.credentials.create({
+            publicKey: options,
+          });
+
+          log("log2", "✅ Credential created by authenticator", "success");
+          log(
+            "log2",
+            `Credential ID: ${credential.id.substring(0, 30)}...`,
+            "data",
+          );
+          log("log2", "📡 Sending to register/finish...", "info");
+
+          // Finish
+          const finishRes = await fetch(
+            `${BASE}/auth/admin/passkey/register/finish`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`,
+              },
+              body: JSON.stringify({
+                credential: prepareCredentialForServer(credential),
+                origin: getOrigin(),
+                clientDataJSON: ab2b64(credential.response.clientDataJSON),
+              }),
+            },
+          );
+
+          const finishData = await finishRes.json();
+
+          if (finishRes.ok && finishData.status === "success") {
+            log("log2", "🎉 Passkey registered successfully!", "success");
+            setStatus("green", "Passkey registered");
+            markStep("step2", "done");
+            markStep("step3", "active");
+          } else {
+            log(
+              "log2",
+              `❌ Finish failed: ${finishData.message || JSON.stringify(finishData)}`,
+              "error",
+            );
+            setStatus("red", "Registration finish failed");
+          }
+        } catch (err) {
+          if (err.name === "NotAllowedError") {
+            log("log2", "❌ User cancelled or timed out", "error");
+          } else if (err.name === "InvalidStateError") {
+            log(
+              "log2",
+              "⚠️ Passkey already registered for this device",
+              "warn",
+            );
+          } else {
+            log("log2", `❌ Error: ${err.message}`, "error");
+          }
+          setStatus("red", "Registration failed");
+        }
+      }
+
+      // ─── Step 3: Passkey Login ─────────────────────────────────
+      async function loginWithPasskey() {
+        const email = document.getElementById("passkeyEmail").value;
+
+        if (!email) {
+          log("log3", "❌ Enter your email", "error");
+          return;
+        }
+
+        setStatus("pulse", "Starting passkey login...");
+        log("log3", `📡 Calling login/begin for ${email}...`, "info");
+
+        try {
+          // Begin
+          const beginRes = await fetch(
+            `${BASE}/auth/admin/passkey/login/begin`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email, origin: getOrigin() }),
+            },
+          );
+
+          const beginData = await beginRes.json();
+
+          if (!beginRes.ok) {
+            log(
+              "log3",
+              `❌ Begin failed: ${beginData.message || JSON.stringify(beginData)}`,
+              "error",
+            );
+            setStatus("red", "Login begin failed");
+            return;
+          }
+
+          log("log3", "✅ Challenge received", "success");
+
+          let options = beginData.data || beginData;
+          options = patchPublicKeyOptions(options);
+          const rawChallenge3 = options.challenge;
+          log(
+            "log3",
+            `Challenge type: ${typeof rawChallenge3} | preview: ${safePreview(rawChallenge3)}`,
+            "data",
+          );
+          options.challenge = challengeToBuffer(rawChallenge3);
+
+          if (options.allowCredentials) {
+            options.allowCredentials = options.allowCredentials.map((c) => ({
+              ...c,
+              id: b64ToUint8(c.id),
+            }));
+          }
+
+          log("log3", "👁️ Browser prompting for biometrics / PIN...", "warn");
+
+          // Call WebAuthn API
+          const credential = await navigator.credentials.get({
+            publicKey: options,
+          });
+
+          log("log3", "✅ Credential retrieved", "success");
+          log("log3", "📡 Sending to login/finish...", "info");
+
+          // Finish
+          const finishRes = await fetch(
+            `${BASE}/auth/admin/passkey/login/finish`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                credential: prepareCredentialForServer(credential),
+                origin: getOrigin(),
+                clientDataJSON: ab2b64(credential.response.clientDataJSON),
+              }),
+            },
+          );
+
+          const finishData = await finishRes.json();
+
+          if (
+            finishRes.ok &&
+            (finishData.token || finishData.status === "success")
+          ) {
+            const newToken = finishData.token || finishData.data?.token;
+            log("log3", "🎉 Passkey login successful!", "success");
+            if (newToken) {
+              authToken = newToken;
+              log("log3", `New token: ${newToken.substring(0, 30)}...`, "data");
+            }
+            setStatus("green", `Logged in via passkey as ${email}`);
+            markStep("step3", "done");
+            markStep("step4", "active");
+          } else {
+            log(
+              "log3",
+              `❌ Finish failed: ${finishData.message || JSON.stringify(finishData)}`,
+              "error",
+            );
+            setStatus("red", "Passkey login failed");
+          }
+        } catch (err) {
+          if (err.name === "NotAllowedError") {
+            log("log3", "❌ User cancelled or no passkey found", "error");
+          } else {
+            log("log3", `❌ Error: ${err.message}`, "error");
+          }
+          setStatus("red", "Login failed");
+        }
+      }
+
+      // ─── Step 4: List & Revoke ─────────────────────────────────
+      async function listPasskeys() {
+        if (!authToken) {
+          log("log4", "❌ Login first", "error");
+          return;
+        }
+
+        log("log4", "📡 Fetching passkey list...", "info");
+
+        try {
+          const res = await fetch(`${BASE}/auth/admin/passkey/list`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            log(
+              "log4",
+              `❌ Failed: ${data.message || JSON.stringify(data)}`,
+              "error",
+            );
+            return;
+          }
+
+          const passkeys = data?.data?.passkeys || data?.passkeys || [];
+          const container = document.getElementById("passkeyList");
+          container.innerHTML = "";
+
+          if (passkeys.length === 0) {
+            log("log4", "⚠️ No passkeys registered yet", "warn");
+            return;
+          }
+
+          log("log4", `✅ Found ${passkeys.length} passkey(s)`, "success");
+          markStep("step4", "done");
+
+          passkeys.forEach((pk) => {
+            const item = document.createElement("div");
+            item.className = "passkey-item";
+            const credId = pk.credentialId || pk.id || "unknown";
+            item.innerHTML = `
+          <div class="passkey-info">
+            <div class="passkey-id">🪪 ${credId.substring(0, 40)}...</div>
+            <div class="passkey-meta">
+              Created: ${pk.createdAt ? new Date(pk.createdAt).toLocaleString() : "N/A"} ·
+              Last used: ${pk.lastUsed ? new Date(pk.lastUsed).toLocaleString() : "Never"}
+            </div>
+          </div>
+          <button class="btn btn-danger" onclick="revokePasskey('${credId}')">🗑 Revoke</button>
+        `;
+            container.appendChild(item);
+          });
+        } catch (err) {
+          log("log4", `❌ Error: ${err.message}`, "error");
+        }
+      }
+
+      async function revokePasskey(credentialId) {
+        if (!confirm(`Revoke this passkey?\n${credentialId}`)) return;
+
+        log("log4", `📡 Revoking ${credentialId.substring(0, 20)}...`, "info");
+
+        try {
+          const res = await fetch(`${BASE}/auth/admin/passkey/revoke`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({ credentialId }),
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            log("log4", "✅ Passkey revoked successfully", "success");
+            await listPasskeys();
+          } else {
+            log(
+              "log4",
+              `❌ Revoke failed: ${data.message || JSON.stringify(data)}`,
+              "error",
+            );
+          }
+        } catch (err) {
+          log("log4", `❌ Error: ${err.message}`, "error");
+        }
+      }
+    </script>
+  </body>
+</html>

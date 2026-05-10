@@ -6,18 +6,15 @@ const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const factory = require("./handlersFactory");
 const ApiError = require("../utils/apiError");
-const { uploadSingleImage } = require("../middlewares/uploadImageMiddleware");
 const createToken = require("../utils/createToken");
 const User = require("../models/userModel");
 const Car = require("../models/Car");
 const ApiFeatures = require("../utils/apiFeatures");
-const sendEmail = require("../utils/sendEmail");
+const { sendCarCredentials } = require("./emailService");
 const CategoryCode = require("../models/categoryCode");
-const { normalizeCarNumber } = require("../utils/carNumberCheck");
-
-// Upload single image
-exports.uploadUserImage = uploadSingleImage("profileImg");
-
+const searchService = require("./searchService");
+const { send } = require("process");
+const { STATES } = require("mongoose");
 // Function to generate a unique 8-digit code
 const generateUniqueCode = async () => {
   let isUnique = false;
@@ -35,23 +32,6 @@ const generateUniqueCode = async () => {
 
   return code;
 };
-// Image processing
-exports.resizeImage = asyncHandler(async (req, res, next) => {
-  const filename = `user-${uuidv4()}-${Date.now()}.jpeg`;
-
-  if (req.file) {
-    await sharp(req.file.buffer)
-      .resize(600, 600)
-      .toFormat("jpeg")
-      .jpeg({ quality: 95 })
-      .toFile(`uploads/users/${filename}`);
-
-    // Save image into our db
-    req.body.profileImg = filename;
-  }
-
-  next();
-});
 
 // @desc    Get list of users
 // @route   GET /api/v1/users
@@ -71,8 +51,8 @@ exports.getUsers = asyncHandler(async (req, res) => {
     .limitFields();
 
   const users = await User.find(filter);
-
-  let { mongooseQuery, paginationResult } = apiFeatures;
+  const mongooseQuery = apiFeatures.mongooseQuery;
+  const paginationResult = apiFeatures.paginationResult;
   const documents = await mongooseQuery;
   const formattedUsers = documents.map((document) => {
     const formattedUser = {
@@ -124,9 +104,7 @@ exports.createUser = asyncHandler(async (req, res, next) => {
   //console.log("generated code", generatedCode);
   //console.log("generated Password", generatedPassword);
   // 1- Create user
-  const carNumber = normalizeCarNumber(req.body.carNumber);
-  const clientType = req.body.clientType;
-
+  const { carNumber, clientType } = req.body;
   let newCarCode;
   //const fuser = await Car.findOne({ email });
   //if (fuser) {
@@ -220,6 +198,7 @@ exports.createUser = asyncHandler(async (req, res, next) => {
     periodicRepairs: req.body.periodicRepairs,
     nonPeriodicRepairs: req.body.nonPeriodicRepairs,
   });
+
   const user = await User.create({
     name: req.body.name,
     carNumber: req.body.carNumber,
@@ -237,109 +216,25 @@ exports.createUser = asyncHandler(async (req, res, next) => {
       },
     ],
     role: req.body.role,
+    image: req.body.image,
+    imagePublicId: req.body.imagePublicId,
   });
 
   // 2- Generate token
   const token = createToken(user._id);
   try {
-    res.status(201).json({ data: user, newCar, token });
+    // 3) Send the reset code via email
+    await sendCarCredentials({
+      email: req.body.email,
+      ownerName: req.body.name,
+      generatedCode: newCarCode,
+      generatedPassword,
+    });
   } catch (err) {
+    console.log("Email sender error", err);
     return next(new ApiError("There is an error", 500));
   }
-  // 3) Send the reset code via email
-  const message = `Dear ${req.body.name},\n\nYour car has been successfully registered with us.\n\nHere are your credentials:\ncar Code: ${newCarCode}\nPassword: ${generatedPassword}\n\nThank you for choosing our service.\n\nBest regards,\nThe Car Service Center Team`;
-  try {
-    await sendEmail({
-      email: req.body.email,
-      subject: "Your password",
-      message,
-      html: `
-      <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Car Registration Details</title>
-    <style>
-        
-        body, h1, p {
-            margin: 0;
-            padding: 0;
-        }
-        
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f8f8f8;
-            color: #333;
-        }
-        
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-        
-        h1 {
-            color: #f68b1e;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        
-        p {
-            margin-bottom: 20px;
-            line-height: 1.6;
-            
-        }
-        
-        .credentials {
-            background-color: #f68b1e;
-            padding: 15px;
-            color: white;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        .credentials p {
-          color: white; 
-      }
-        .footer {
-            background-color: #f8f8f8;
-            text-align: center;
-            padding: 10px;
-            border-top: 1px solid #ddd;
-            border-radius: 0 0 8px 8px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <img src="https://raw.githubusercontent.com/joeshwoa/fixer_system/main/assets/images/51.png" alt="Logo" style="display: block; margin: 0 auto; max-width: 200px; margin-bottom: 20px;">
-        <h1>Car Registration Details</h1>
-        <p>Dear ${req.body.name},</p>
-        <p>Your car has been successfully registered with us.</p>
-        <div class="credentials">
-            <p><strong>Car Code:</strong> ${newCarCode}</p>
-            <p><strong>Password:</strong> ${generatedPassword}</p>
-        </div>
-        <p>Thank you for choosing our service.</p>
-        <p>Best regards,<br>The Car Service Center Team</p>
-    </div>
-    <div class="footer">
-        &copy; 2024 Car Service Center. All rights reserved.
-    </div>
-</body>
-</html>
-`,
-    });
-
-    res
-      .status(200)
-      .json({ status: "Success", message: "Reset code sent to email" });
-  } catch (err) {
-    return next(new ApiError("There is an error in sending email", 500));
-  }
+  res.status(201).json({ data: user, newCar, token });
 });
 
 // @desc    Update specific user
@@ -457,47 +352,17 @@ exports.updateLoggedUserData = asyncHandler(async (req, res, next) => {
   res.status(200).json({ data: updatedUser });
 });
 
-// @desc    Deactivate logged user
-// @route   DELETE /api/v1/users/deleteMe
-// @access  Private/Protect
-exports.deleteLoggedUserData = asyncHandler(async (req, res, next) => {
-  await User.findByIdAndUpdate(req.user._id, { active: false });
-
-  res.status(204).json({ status: "Success" });
-});
-
-// @desc    search for user
-// @route   get /api/v1/users/search
-// @access  Private
 exports.searchForUser = asyncHandler(async (req, res, next) => {
   const { searchString } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const skip = (page - 1) * limit;
-  let query = User.find();
-
-  if (searchString) {
-    const schema = User.schema;
-    const paths = Object.keys(schema.paths);
-    for (let i = 0; i < paths.length; i++) {
-      const orConditions = paths
-        .filter(
-          (path) =>
-            schema.paths[path].instance === "String" && // Filter only string type parameters
-            (path === "email" ||
-              path === "name" ||
-              path === "phoneNumber" ||
-              path === "role"), // Filter specific fields for search
-        )
-        .map((path) => ({
-          [path]: { $regex: searchString, $options: "i" },
-        }));
-
-      query = query.or(orConditions);
-    }
-  }
-  const documents = await query.sort({ createdAt: -1 }).skip(skip).limit(limit);
-
+  const { results, paginationResult, documents } = await searchService({
+    Model: User,
+    searchString,
+    page,
+    limit,
+    select: "name _id phoneNumber createdAt",
+  });
   if (!documents || documents.length === 0) {
     return next(
       new apiError(
@@ -506,35 +371,11 @@ exports.searchForUser = asyncHandler(async (req, res, next) => {
       ),
     );
   }
-  const totalDocuments = await User.countDocuments(query.getQuery());
-  const totalPages = Math.ceil(totalDocuments / limit);
 
-  const formattedUsers = documents.map((user) => {
-    const formattedUser = {
-      name: user.name,
-      id: user._id,
-      phoneNumber: user.phoneNumber,
-      createdAt: user.createdAt,
-      //cars: user.car.map((car) => ({
-      // Map through each car
-      //  id: car._id,
-      //  carNumber: car.carNumber,
-      //  brand: car.brand,
-      //  category: car.category,
-      //  model: car.model,
-      //})),
-    };
-
-    return formattedUser;
-  });
   res.status(200).json({
     results: documents.length,
-    paginationResult: {
-      currentPage: page,
-      limit: limit,
-      numberOfPages: totalPages,
-    },
-    data: formattedUsers,
+    paginationResult,
+    data: documents,
   });
 });
 
@@ -625,4 +466,24 @@ exports.suggestNextCodeNumber = asyncHandler(async (req, res, next) => {
     newCarCode = 1;
   }
   res.status(200).json({ data: newCarCode });
+});
+// @doc    delte user from the database
+// @route   delte /api/v1/users/delte/:id
+// @access  Private
+exports.deleteUser = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const user = await User.findById(id);
+  if (!user) {
+    return next(new ApiError(`Can't find user for this id ${id}`, 404));
+  }
+  if (user.car.length) {
+    for (let i = 0; i < user.car.length; i++) {
+      let car = await Car.findOneAndDelete({
+        generatedCode: user.car[i].carCode,
+      });
+    }
+  }
+  await user.deleteOne();
+
+  res.status(204).json({ STATES: "the user is deleted" });
 });

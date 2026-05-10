@@ -1,7 +1,7 @@
 // models/Inventory.js
 const { cairoDatePlugin } = require("../utils/cairoDate");
 const mongoose = require("mongoose");
-
+const { cairoDatePlugin } = require("../utils/cairoDate");
 const inventorySchema = new mongoose.Schema(
   {
     name: {
@@ -15,6 +15,14 @@ const inventorySchema = new mongoose.Schema(
     price: {
       type: Number,
       required: [true, "the price is required"],
+    },
+    Unit: {
+      type: String,
+    },
+    Code: {
+      type: String,
+      required: [true, "the Code is required"],
+      unique: [true, "the Code is used before"],
     },
   },
   // مفيده ليا لو عايز اجيب ال منتج الاحدث بالوقت

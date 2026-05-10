@@ -5,7 +5,7 @@ const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
 const moment = require("moment");
 const ApiFeatures = require("../utils/apiFeatures");
-
+const searchService = require("./searchService");
 // @desc add Worker
 // @Route post /api/v1/Worker
 // @access private
@@ -34,58 +34,24 @@ exports.getAllWorkers = factory.getAll(Worker);
 // @access private
 exports.searchForWorker = asyncHandler(async (req, res, next) => {
   const { searchString } = req.params;
-  let filter = {};
-
-  if (searchString) {
-    const schema = Worker.schema;
-    const paths = Object.keys(schema.paths);
-
-    const orConditions = paths
-      .filter(
-        (path) =>
-          schema.paths[path].instance === "String" && // Filter only string type parameters
-          (path === "IdNumber" ||
-            path === "name" ||
-            path === "phoneNumber" ||
-            path === "jobTitle") // Filter specific fields for search
-      )
-      .map((path) => ({
-        [path]: { $regex: searchString, $options: "i" },
-      }));
-
-    if (orConditions.length > 0) {
-      filter.$or = orConditions;
-    }
+  const { documents, paginationResult } = await searchService({
+    Model: Worker,
+    searchString,
+    select: "name IdNumber phoneNumber jobTitle salary salaryAfterProcces",
+  });
+  if (!documents || documents.length === 0) {
+    return next(
+      new apiError(
+        `No document found for the search string ${searchString}`,
+        404,
+      ),
+    );
   }
-
-  const documentsCounts = await Worker.countDocuments(filter);
-
-  const apiFeatures = new ApiFeatures(Worker.find(filter), req.query)
-    .paginate(documentsCounts)
-    .filter()
-    .search("Worker") // Assuming your ApiFeatures class has this method
-    .limitFields(); // Assuming you have a method to limit fields in ApiFeatures
-
-  const { mongooseQuery, paginationResult } = apiFeatures;
-  let documents = await mongooseQuery;
-
-  documents = documents.sort(
-    (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-  );
-
-  const formattedData = documents.map((doc) => ({
-    name: doc.name,
-    IdNumber: doc.IdNumber,
-    phoneNumber: doc.phoneNumber,
-    jobTitle: doc.jobTitle,
-    salary: doc.salary,
-    salaryAfterProcces: doc.salaryAfterProcces,
-  }));
 
   res.status(200).json({
     results: documents.length,
     paginationResult,
-    data: formattedData,
+    data: documents,
   });
 });
 
@@ -117,7 +83,7 @@ exports.UpdateWorkerDetalsByNID = asyncHandler(async (req, res, next) => {
 
   if (!worker) {
     return next(
-      new apiError(`Can't find worker with this national id  ${IdNumber}`, 404)
+      new apiError(`Can't find worker with this national id  ${IdNumber}`, 404),
     );
   }
 
@@ -138,15 +104,15 @@ exports.moneyFromToworker = asyncHandler(async (req, res, next) => {
     return next(
       new apiError(
         `the loans and penalty must be negative and reward must be positive`,
-        400
-      )
+        400,
+      ),
     );
   }
   const worker = await Worker.findById(id);
 
   if (!worker) {
     return next(
-      new apiError(`Can't find worker with this national id ${id}`, 404)
+      new apiError(`Can't find worker with this national id ${id}`, 404),
     );
   }
 

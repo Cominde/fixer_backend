@@ -1,13 +1,19 @@
 const mongoose = require("mongoose");
 const { cairoDatePlugin } = require("../utils/cairoDate");
 //const bcrypt = require("bcryptjs");
-
+const { cairoDatePlugin } = require("../utils/cairoDate");
 const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
       trim: true,
       required: [true, "name required"],
+    },
+    image: {
+      type: String,
+    },
+    imagePublicId: {
+      type: String,
     },
     slug: {
       type: String,
@@ -37,7 +43,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-
+    loginToken: {
+      token: { type: String, default: null },
+      expiresAt: { type: Date, default: null },
+    },
     phoneNumber: {
       type: String,
       //required: [true, "phoneNumber is required"],
@@ -50,6 +59,7 @@ const userSchema = new mongoose.Schema(
         },
         carCode: {
           type: String,
+          unique: true,
           maxlength: 8,
         },
         carNumber: {
@@ -75,6 +85,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    fcmToken: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true },
 );
@@ -85,5 +99,7 @@ const userSchema = new mongoose.Schema(
 //  this.password = await bcrypt.hash(this.password, 12);
 //  next();
 //});
+
 userSchema.plugin(cairoDatePlugin);
+
 module.exports = mongoose.model("User", userSchema);

@@ -3,12 +3,16 @@ const Repairing = require("../models/repairingModel");
 const Car = require("../models/Car");
 const User = require("../models/userModel");
 //const slugify = require("slugify");
-const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
 const ApiFeatures = require("../utils/apiFeatures");
 const asyncHandler = require("express-async-handler");
 const { body } = require("express-validator");
+const {
+  sendRepairDoneNotification,
+  sendNeedsCheckNotification,
+} = require("./notificationFire");
 const { normalizeCarNumber } = require("../utils/carNumberCheck");
+
 const generateNewRepairId = async (
   const_part_of_id = "2021",
   manualId = null,
@@ -90,16 +94,14 @@ const generateNewRepairId = async (
 // @desc create a repairing
 // @Route POST /api/v1/repairing
 // @access private
-
 exports.createRepairing = asyncHandler(async (req, res, next) => {
   let totalPrice = 0;
   let totalServicesCount = 0;
   let completedServices = 0;
   let periodicRepairs = 0;
   let nonperiodicRepairs = 0;
-  let complete = false;
-  let newId = 0;
   const const_part_of_id = "2021";
+  let complete = false;
   const carNumber = normalizeCarNumber(req.body.carNumber);
   const {
     components,
@@ -108,14 +110,14 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     type,
     discount,
     daysItTake,
-    nextRepairDate,
+    nextPerDate,
     Note1,
     Note2,
     distance,
     nextRepairDistance,
   } = req.body;
+
   if (req.body.manually == "True" || req.body.manually == true) {
-    return next(new apiError(`the manually stop working from now`, 400));
     const id = req.body.id;
     const parsedCarCode = parseInt(id, 10);
 
@@ -214,7 +216,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
 
   reCar.save();
   const currentDate = new Date();
-  const parsedNextPerDate = new Date(nextRepairDate);
+  const parsedNextPerDate = new Date(nextPerDate);
   if (completedServices === totalServicesCount) {
     complete = true;
     const lastRepairDate = new Date();
@@ -222,7 +224,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       { carNumber: carNumber },
       {
         lastRepairDate: lastRepairDate,
-        nextRepairDate: nextRepairDate,
+        nextRepairDate: nextPerDate,
         repairing: !complete,
       },
       { new: true },
@@ -291,7 +293,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     Note2,
     distance,
     nextRepairDistance,
-    nextRepairDate: nextRepairDate,
+    nextRepairDate: nextPerDate,
   });
   if (!complete) {
     const car = await Car.findOneAndUpdate(
@@ -532,67 +534,58 @@ exports.updateServiceStateById = asyncHandler(async (req, res, next) => {
 exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
   let filter = { complete: true };
 
+  // 👇 limit ثابت 50
+  req.query.limit = 50;
+
+  // احسب عدد المستندات قبل أي فلتر
   const documentsCounts = await Repairing.countDocuments(filter);
+
+  // استخدم ApiFeatures لكل الخصائص: filter, search, limitFields, sort
   const apiFeatures = new ApiFeatures(Repairing.find(filter), req.query)
-    .sort()
-    .paginate(documentsCounts)
     .filter()
     .search()
-    .limitFields();
-  const { mongooseQuery, paginationResult } = apiFeatures;
-  const repairs = await mongooseQuery;
+    .limitFields()
+    .sort()
+    .paginate(documentsCounts); // paginate آخر حاجة
 
-  const carNumbers = repairs.map((repair) =>
-    normalizeCarNumber(repair.carNumber),
-  );
+  const repairs = await apiFeatures.mongooseQuery;
 
+  // جلب العربيات الموجودة
+  const carNumbers = repairs.map((repair) => repair.carNumber);
   const cars = await Car.find({ carNumber: { $in: carNumbers } });
 
-  const carCodeMap = {};
+  const carMap = {};
   cars.forEach((car) => {
-    carCodeMap[car.carNumber] = car.generatedCode;
+    carMap[car.carNumber] = car;
   });
 
-  let enrichedRepairs = repairs.map((repair) => {
-    const carCode = carCodeMap[repair.carNumber];
-    const car = cars.find((car) => car.carNumber === repair.carNumber);
-    if (car) {
-      return {
-        brand: repair.brand,
-        category: repair.category,
-        model: repair.model,
-        client: repair.client,
-        priceAfterDiscount: repair.priceAfterDiscount,
-        carCode: carCode,
-        paidOn: repair.createdAt,
-        id: repair._id,
-      };
-    } else {
-      return {
-        error: `the car ${repair.carNumber} for this repair is not exist`,
-        brand: repair.brand,
-        category: repair.category,
-        model: repair.model,
-        client: repair.client,
-        priceAfterDiscount: repair.priceAfterDiscount,
-        paidOn: repair.createdAt,
-        id: repair._id,
-      };
-    }
+  // دمج بيانات الـ repair مع العربية (ولو العربية اتمسحت يرجع null)
+  const enrichedRepairs = repairs.map((repair) => {
+    const car = carMap[repair.carNumber];
+
+    return {
+      brand: car?.brand || null,
+      category: car?.category || null,
+      model: car?.model || null,
+      client: repair.client,
+      priceAfterDiscount: repair.priceAfterDiscount,
+      carCode: car?.generatedCode || null,
+      paidOn: repair.updatedAt,
+      id: repair._id,
+      carDeleted: !car, // لو العربية اتمسحت
+    };
   });
-  enrichedRepairs = enrichedRepairs.sort(
-    (a, b) => new Date(b.paidOn) - new Date(a.paidOn),
-  );
 
   res.status(200).json({
     results: enrichedRepairs.length,
-    paginationResult,
+    currentPage: apiFeatures.paginationResult.currentPage,
+    totalPages: apiFeatures.paginationResult.numberOfPages,
+    totalDocuments: documentsCounts,
     data: enrichedRepairs,
   });
 });
-
-// @desc Search for car services by car Id
-// @Route GET /api/v1/repairing/getById/:carId
+// @desc Search for car services by owner Name
+// @Route GET /api/v1/repairing/owner/:ownerName
 // @access private
 exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
@@ -600,7 +593,7 @@ exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   const car = await Car.findById(id);
 
   if (!car || car.length === 0) {
-    return next(new apiError(`there is no car with this id ${id}`, 404));
+    return next(new apiError(`Can't find services for this owner ${id}`, 404));
   }
 
   const repairing = await Repairing.find({
@@ -608,7 +601,7 @@ exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   });
 
   if (!repairing || repairing.length === 0) {
-    return next(new apiError(`Can't find services for this Car ${id}`, 404));
+    return next(new apiError(`Can't find services for this owner ${id}`, 404));
   }
   sortedRepairs = repairing.sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
@@ -712,7 +705,7 @@ exports.getRepairsReport = asyncHandler(async (req, res, next) => {
   });
 });
 exports.suggestNextCodeNumber = asyncHandler(async (req, res, next) => {
-  const newId = await generateNewRepairId("2021");
+  newId = await generateNewRepairId("2021");
   res.status(200).json({ data: newId });
 });
 
@@ -919,10 +912,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           (service) => service.state === "completed",
         ).length;
 
-        // Only process new services once
-        const newServices = req.body.services.filter((service) => !service.id);
-
-        for (const { price, state } of newServices) {
+        for (const { price, state } of req.body.services) {
           updateTotalPrice = updateTotalPrice + price;
 
           totalServicesCount++;
@@ -940,8 +930,10 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           state = "Repair";
         } else if (currentDate < repair.nextRepairDate && newComplete) {
           state = "Good";
+          await sendRepairDoneNotification(repairService.carNumber);
         } else {
           state = "Need to check";
+          await sendNeedsCheckNotification(repairService.carNumber);
         }
         const car_state = await Car.findOneAndUpdate(
           { carNumber: repair.carNumber },
@@ -955,7 +947,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           );
         }
 
-        repair.Services = repair.Services.concat(newServices);
+        repair.Services = repair.Services.concat(req.body.services);
         repair.complete = newComplete;
         repair.completedServicesRatio = completedServicesRatio;
       }
@@ -1002,17 +994,12 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           );
         }
       } else {
-        // Only process new additions once
-        const newAdditions = req.body.additions.filter(
-          (addition) => !addition.id,
-        );
-
-        for (const { price } of newAdditions) {
+        for (const { price } of req.body.additions) {
           if (price) {
             updateTotalPrice += Number(price);
           }
         }
-        repair.additions = repair.additions.concat(newAdditions);
+        repair.additions = repair.additions.concat(req.body.additions);
       }
     }
     totalPrice = totalPrice + updateTotalPrice;
@@ -1051,15 +1038,11 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
         periodicRepairs += 1;
         if (repair.type == "nonPeriodic") {
           nonperiodicRepairs -= 1;
-        } else if (repair.type == "periodic") {
-          periodicRepairs -= 1;
         }
       } else {
         nonperiodicRepairs += 1;
         if (repair.type == "periodic") {
           periodicRepairs -= 1;
-        } else if (repair.type == "nonPeriodic") {
-          nonperiodicRepairs -= 1;
         }
       }
     } else {

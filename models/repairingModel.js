@@ -23,9 +23,6 @@ const repairingSchema = new mongoose.Schema(
     brand: { type: String },
     category: { type: String },
     model: { type: String },
-    discount: {
-      type: Number,
-    },
     totalPrice: {
       type: Number,
     },
@@ -37,9 +34,6 @@ const repairingSchema = new mongoose.Schema(
       type: String,
       enum: ["periodic", "nonPeriodic"],
       default: "periodic",
-    },
-    expectedDate: {
-      type: Date,
     },
     Services: [
       {

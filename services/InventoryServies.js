@@ -3,6 +3,7 @@ const Inventory = require("../models/Inventory");
 const asyncHandler = require("express-async-handler");
 const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
+const searchService = require("./searchService");
 
 // @desc add Component
 // @Route GET /api/v1/Inventort
@@ -17,6 +18,10 @@ exports.addComponent = asyncHandler(async (req, res, next) => {
       ),
     );
   }
+  const ConponentCode = await Inventory.findOne(
+    { Code: req.body.Code },
+    { new: true },
+  );
   const newDoc = await Inventory.create(req.body);
   res.status(201).json({ data: newDoc });
 });
@@ -25,6 +30,14 @@ exports.addComponent = asyncHandler(async (req, res, next) => {
 // @Route GET /api/v1/Inventort
 // @access private
 exports.getAllCom = factory.getAll(Inventory);
+
+// @desc Get list of Components
+// @Route GET /api/v1/Inventort
+// @access private
+exports.getAllUnits = asyncHandler(async (req, res) => {
+  const Units = await Inventory.distinct("Unit");
+  res.status(200).json({ data: Units });
+});
 
 // @desc Get spacific Component
 // @Route GET /api/v1/Inventort
@@ -45,18 +58,30 @@ exports.searchCom = asyncHandler(async (req, res, next) => {
   const limit = parseInt(req.query.limit) || 10;
   const skip = (page - 1) * limit;
   let query = Inventory.find();
-
+  const { documents, paginationResult } = await searchService({
+    Model: Inventory,
+    searchString,
+    page,
+    limit,
+  });
+  if (!documents || documents.length === 0) {
+    return next(
+      new apiError(
+        `No document found for the search string ${searchString}`,
+        404,
+      ),
+    );
+  }
+  /*
   if (searchString) {
     const schema = Inventory.schema;
     const paths = Object.keys(schema.paths);
 
     for (let i = 0; i < paths.length; i++) {
       const orConditions = paths
-        .filter(
-          (path) =>
-            schema.paths[path].instance === "String" && // Filter only string type parameters
-            path === "name", // Filter specific fields for search
-        )
+
+        .filter((path) => schema.paths[path].instance === "String")
+
         .map((path) => ({
           [path]: { $regex: searchString, $options: "i" },
         }));
@@ -66,23 +91,15 @@ exports.searchCom = asyncHandler(async (req, res, next) => {
   }
   const documents = await query.sort({ createdAt: -1 }).skip(skip).limit(limit);
 
-  if (!documents || documents.length === 0) {
-    return next(
-      new apiError(
-        `No document found for the search string ${searchString}`,
-        404,
-      ),
-    );
-  }
+
+
+>>>>>>> 523b41d (the start of V2)
   const totalDocuments = await Inventory.countDocuments(query.getQuery());
   const totalPages = Math.ceil(totalDocuments / limit);
+*/
   res.status(200).json({
     results: documents.length,
-    paginationResult: {
-      currentPage: page,
-      limit: limit,
-      numberOfPages: totalPages,
-    },
+    paginationResult,
     data: documents,
   });
   /* sortedCategory = documents.sort(
