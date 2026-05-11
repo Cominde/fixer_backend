@@ -7,7 +7,7 @@ const Challenge = require("../models/challengeModel");
 const User = require("../models/userModel");
 const ApiError = require("../utils/apiError");
 const createToken = require("../utils/createToken");
-
+const mongoose = require("mongoose");
 // WebAuthn configuration
 const RP_ID = process.env.WEBAUTHN_RP_ID || "localhost";
 const RP_NAME = process.env.WEBAUTHN_RP_NAME || "Fixer Admin";
@@ -193,7 +193,11 @@ const markChallengeUsed = async (challengeId) => {
  */
 exports.beginPasskeyRegistration = async (userId, origin) => {
   validateOrigin(origin);
+  const id = userId?._id ?? userId;
 
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError("Invalid user ID format", 400);
+  }
   const user = await User.findById(userId);
   if (!user) {
     throw new ApiError("User not found", 404);
