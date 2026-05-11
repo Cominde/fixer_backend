@@ -10,16 +10,6 @@ const authService = require("../services/authService");
 
 /**
  * @swagger
- * tags:
- *   name: Notifications
- *   description: Push notifications management (user only)
- */
-
-router.use(authService.protect);
-router.use(authService.allowedTo("user"));
-
-/**
- * @swagger
  * /Notification/saveFCMToken/{userId}:
  *   post:
  *     summary: Save FCM token for a specific user
@@ -52,7 +42,9 @@ router.use(authService.allowedTo("user"));
  *       404:
  *         description: User not found
  */
-router.route("/saveFCMToken/:userId").post(saveFCMToken);
+router
+  .route("/saveFCMToken/:userId")
+  .post(authService.protect, authService.allowedTo("user"), saveFCMToken);
 
 /**
  * @swagger
@@ -91,7 +83,13 @@ router.route("/saveFCMToken/:userId").post(saveFCMToken);
  *       404:
  *         description: User not found or no FCM token
  */
-router.route("/send/:id").post(sendNotificationToUser);
+router
+  .route("/send/:id")
+  .post(
+    authService.protect,
+    authService.allowedTo("admin"),
+    sendNotificationToUser,
+  );
 
 /**
  * @swagger
@@ -121,6 +119,12 @@ router.route("/send/:id").post(sendNotificationToUser);
  *       200:
  *         description: Notification sent to all users successfully
  */
-router.route("/notificationSendAll/").post(sendNotificationToAllUsers);
+router
+  .route("/notificationSendAll/")
+  .post(
+    authService.protect,
+    authService.allowedTo("admin"),
+    sendNotificationToAllUsers,
+  );
 
 module.exports = router;
