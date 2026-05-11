@@ -1,4 +1,5 @@
 const asyncHandler = require("express-async-handler");
+const jwt = require("jsonwebtoken");
 const ApiError = require("../utils/apiError");
 const {
   beginPasskeyRegistration,
@@ -9,25 +10,37 @@ const {
   revokePasskey,
 } = require("./webauthnService");
 
+const extractUserId = (req, next) => {
+  let token;
+  if (req.headers.authorization?.startsWith("Bearer ")) {
+    token = req.headers.authorization.split(" ")[1];
+  }
+  if (!token) {
+    next(
+      new ApiError(
+        "You are not logged in, Please login to get access this route",
+        401,
+      ),
+    );
+    return null;
+  }
+  const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+  return decoded.userId;
+};
 /**
  * @desc    Begin passkey registration
  * @route   POST /api/V2/auth/admin/passkey/register/begin
  * @access  Private (authenticated admin)
  */
 exports.beginRegistration = asyncHandler(async (req, res, next) => {
-  const { origin } = req.body;
-  const userId = req.user._id;
+  const userId = extractUserId(req, next); // 👈
+  if (!userId) return;
 
-  if (!origin) {
-    return next(new ApiError("Origin is required", 400));
-  }
+  const { origin } = req.body;
+  if (!origin) return next(new ApiError("Origin is required", 400));
 
   const options = await beginPasskeyRegistration(userId, origin);
-
-  res.status(200).json({
-    status: "success",
-    data: options,
-  });
+  res.status(200).json({ status: "success", data: options });
 });
 
 /**
@@ -36,9 +49,10 @@ exports.beginRegistration = asyncHandler(async (req, res, next) => {
  * @access  Private (authenticated admin)
  */
 exports.finishRegistration = asyncHandler(async (req, res, next) => {
-  const { credential, origin, clientDataJSON } = req.body;
-  const userId = req.user._id;
+  const userId = extractUserId(req, next); // 👈
+  if (!userId) return;
 
+  const { credential, origin, clientDataJSON } = req.body;
   if (!credential || !origin || !clientDataJSON) {
     return next(
       new ApiError(
@@ -54,7 +68,6 @@ exports.finishRegistration = asyncHandler(async (req, res, next) => {
     origin,
     clientDataJSON,
   );
-
   res.status(200).json(result);
 });
 
@@ -112,16 +125,11 @@ exports.finishLogin = asyncHandler(async (req, res, next) => {
  * @access  Private (authenticated admin)
  */
 exports.listPasskeys = asyncHandler(async (req, res, next) => {
-  const userId = req.user._id;
+  const userId = extractUserId(req, next); // 👈
+  if (!userId) return;
 
   const passkeys = await listUserPasskeys(userId);
-
-  res.status(200).json({
-    status: "success",
-    data: {
-      passkeys,
-    },
-  });
+  res.status(200).json({ status: "success", data: { passkeys } });
 });
 
 /**
@@ -130,14 +138,13 @@ exports.listPasskeys = asyncHandler(async (req, res, next) => {
  * @access  Private (authenticated admin)
  */
 exports.revokePasskey = asyncHandler(async (req, res, next) => {
-  const { credentialId } = req.body;
-  const userId = req.user._id;
+  const userId = extractUserId(req, next); // 👈
+  if (!userId) return;
 
-  if (!credentialId) {
+  const { credentialId } = req.body;
+  if (!credentialId)
     return next(new ApiError("Credential ID is required", 400));
-  }
 
   const result = await revokePasskey(userId, credentialId);
-
   res.status(200).json(result);
 });

@@ -149,16 +149,12 @@ exports.loginByCarCode = asyncHandler(async (req, res, next) => {
 exports.protect = asyncHandler(async (req, res, next) => {
   let token;
 
-  console.log("Auth Header:", req.headers.authorization); // ADD THIS
-
   if (
     req.headers.authorization &&
     req.headers.authorization.startsWith("Bearer ")
   ) {
     token = req.headers.authorization.split(" ")[1];
   }
-
-  console.log("Token extracted:", token); // ADD THIS
 
   if (!token) {
     return next(
@@ -170,7 +166,7 @@ exports.protect = asyncHandler(async (req, res, next) => {
   }
 
   const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-  console.log("Decoded:", decoded); // ADD THIS
+
   //check if user exists
   const currentUser = await User.findById(decoded.userId);
   if (!currentUser) {
