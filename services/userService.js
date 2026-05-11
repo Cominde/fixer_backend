@@ -15,6 +15,7 @@ const CategoryCode = require("../models/categoryCode");
 const searchService = require("./searchService");
 const { send } = require("process");
 const { STATES } = require("mongoose");
+const { normalizeCarNumber } = require("../utils/carNumberCheck");
 // Function to generate a unique 8-digit code
 const generateUniqueCode = async () => {
   let isUnique = false;
@@ -356,17 +357,38 @@ exports.searchForUser = asyncHandler(async (req, res, next) => {
   const { searchString } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const { results, paginationResult, documents } = await searchService({
-    Model: User,
-    searchString,
-    page,
-    limit,
-    select: "name _id phoneNumber createdAt",
-  });
+  const skip = (page - 1) * limit;
+
+  const searchQuery = {
+    $or: [
+      { name: { $regex: searchString, $options: "i" } },
+      { email: { $regex: searchString, $options: "i" } },
+      { phone: { $regex: searchString, $options: "i" } },
+      { phoneNumber: { $regex: searchString, $options: "i" } },
+      { role: { $regex: searchString, $options: "i" } },
+      {
+        "car.carNumber": {
+          $regex: normalizeCarNumber(searchString),
+          $options: "i",
+        },
+      },
+      { "car.carCode": { $regex: searchString, $options: "i" } },
+      { "car.brand": { $regex: searchString, $options: "i" } },
+      { "car.category": { $regex: searchString, $options: "i" } },
+      { "car.model": { $regex: searchString, $options: "i" } },
+    ],
+  };
+
+  const totalCount = await User.countDocuments(searchQuery);
+  const documents = await User.find(searchQuery)
+    .select("name _id phoneNumber phone email role car active createdAt")
+    .skip(skip)
+    .limit(limit);
+
   if (!documents || documents.length === 0) {
     return next(
       new apiError(
-        `No document found for the search string ${searchString}`,
+        `No user found for the search string "${searchString}"`,
         404,
       ),
     );
@@ -374,7 +396,12 @@ exports.searchForUser = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({
     results: documents.length,
-    paginationResult,
+    totalCount,
+    paginationResult: {
+      currentPage: page,
+      limit,
+      numberOfPages: Math.ceil(totalCount / limit),
+    },
     data: documents,
   });
 });
