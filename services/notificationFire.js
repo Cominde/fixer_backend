@@ -1,5 +1,6 @@
 const admin = require("../config/fireBase.js");
 const User = require("../models/userModel.js");
+const Car = require("../models/Car");
 const asyncHandler = require("express-async-handler");
 const apiError = require("../utils/apiError");
 
@@ -14,8 +15,6 @@ exports.saveFCMToken = asyncHandler(async (req, res, next) => {
   const userId = req.params.userId;
   const { fcmToken } = req.body;
   const user = await User.findById(userId);
-  console.log(userId);
-  console.log(user);
   if (!fcmToken) return next(new apiError(`user token are required`, 400));
   if (!user)
     return next(new apiError(`there is no user with this id ${userId}`, 404));
