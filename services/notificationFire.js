@@ -24,6 +24,30 @@ exports.saveFCMToken = asyncHandler(async (req, res, next) => {
   }
   user.fcmToken = fcmToken;
   await user.save({ validateBeforeSave: false });
+  // 👇 check all user cars and send notification if any needs check
+  for (const userCar of user.car) {
+    const car = await Car.findOne({ carNumber: userCar.carNumber });
+    if (car?.State === "Need to check") {
+      try {
+        await admin.messaging().send({
+          token: fcmToken,
+          notification: {
+            title: "⚠️ Car Needs Inspection",
+            body: `Your car with number ${car.carNumber} is due for a check-up.`,
+          },
+          data: { type: "needs_check", carNumber: String(car.carNumber) },
+          android: { priority: "high" },
+          apns: { payload: { aps: { sound: "default" } } },
+        });
+        console.log(`✅ Notification sent for car: ${car.carNumber}`);
+      } catch (err) {
+        if (err.code === "messaging/registration-token-not-registered") {
+          await User.findByIdAndUpdate(userId, { fcmToken: null });
+        }
+        console.log(`❌ FCM error: ${err.message}`);
+      }
+    }
+  }
   res.json({ success: true, message: `FCM token saved successfully` });
 });
 
@@ -206,39 +230,4 @@ exports.sendNotificationToAllUsers = asyncHandler(async (req, res, next) => {
   });
 
   res.json({ success: true, message: `Notification sent to all users` });
-});
-
-// @desc send notification to login user if car need to check
-// @Route post /api/v2/auth/loginByCode
-// @access public
-exports.sendNeedsCheckNotification = asyncHandler(async (req, res, next) => {
-  const car = req.car;
-
-  if (car?.State === "Need to check") {
-    const user = await findUserByCarNumber(car.carNumber);
-    if (user?.fcmToken) {
-      try {
-        await admin.messaging().send({
-          token: user.fcmToken,
-          notification: {
-            title: "⚠️ Car Needs Inspection",
-            body: `Your car with number ${car.carNumber} is due for a check-up.`,
-          },
-          data: { type: "needs_check", carNumber: String(car.carNumber) },
-          android: { priority: "high" },
-          apns: { payload: { aps: { sound: "default" } } },
-        });
-        console.log(`✅ Notification sent for car: ${car.carNumber}`);
-      } catch (err) {
-        // 👇 token is invalid, remove it from the database
-        if (err.code === "messaging/registration-token-not-registered") {
-          console.log(`❌ Invalid FCM token for user ${user._id}, clearing it`);
-        } else {
-          console.log(`❌ FCM error: ${err.message}`);
-        }
-      }
-    }
-  }
-
-  res.status(200).json(req.loginResponse);
 });
