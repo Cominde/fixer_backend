@@ -416,31 +416,43 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
 // @access private
 exports.getCarRepairsByNumber = asyncHandler(async (req, res, next) => {
   const carNumber = normalizeCarNumber(req.params.carNumber);
-  try {
-    const repairing = await Repairing.find({
-      carNumber,
-    });
+  const { type } = req.query;
 
-    if (!repairing || repairing.length === 0) {
-      return next(
-        new apiError(
-          `Can't find services for this car number ${carNumber}`,
-          404,
-        ),
-      );
-    }
-
-    const sortedRepairs = repairing.sort(
-      (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
-    );
-
-    res.status(200).json({ data: sortedRepairs });
-  } catch (error) {
-    console.error("Error:", error);
-    next(new apiError("Internal Server Error", 500));
+  // Validate type if provided
+  if (type && !["periodic", "nonPeriodic"].includes(type)) {
+    return next(new apiError("Type must be 'periodic' or 'nonPeriodic'", 400));
   }
-});
 
+  const filter = { carNumber };
+  if (type) filter.type = type;
+
+  const repairing = await Repairing.find(filter);
+
+  if (!repairing || repairing.length === 0) {
+    if (type == "both") {
+      res.status(404).json({
+        status: "fail",
+        message: `Can't find services for this car `,
+        data: null,
+      });
+    } else {
+      res.status(404).json({
+        status: "fail",
+        message: `Can't find ${type} services for this car `,
+        data: null,
+      });
+    }
+  }
+
+  const sortedRepairs = repairing.sort(
+    (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+  );
+
+  res.status(200).json({
+    type: type || "both",
+    data: sortedRepairs,
+  });
+});
 // @desc Update service state in repairing schema by service ID
 // @Route PUT /api/v1/repairing/:serviceId
 // @access private
@@ -589,24 +601,42 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
 // @access private
 exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
+  const { type } = req.query;
+
+  if (type && !["periodic", "nonPeriodic"].includes(type)) {
+    return next(new apiError("Type must be 'periodic' or 'nonPeriodic'", 400));
+  }
 
   const car = await Car.findById(id);
-
-  if (!car || car.length === 0) {
-    return next(new apiError(`Can't find services for this owner ${id}`, 404));
+  if (!car) {
+    return next(new apiError(`Can't find car with id ${id}`, 404));
   }
 
-  const repairing = await Repairing.find({
-    carNumber: { $in: car.carNumber },
-  });
+  const filter = { carNumber: car.carNumber };
+  if (type) filter.type = type;
 
+  const repairing = await Repairing.find(filter);
   if (!repairing || repairing.length === 0) {
-    return next(new apiError(`Can't find services for this owner ${id}`, 404));
+    if (type == "both") {
+      res.status(404).json({
+        status: "fail",
+        message: `Can't find services for this car `,
+        data: null,
+      });
+    } else {
+      res.status(404).json({
+        status: "fail",
+        message: `Can't find ${type} services for this car `,
+        data: null,
+      });
+    }
   }
-  sortedRepairs = repairing.sort(
+
+  const sortedRepairs = repairing.sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
   );
-  res.status(200).json({ data: sortedRepairs });
+
+  res.status(200).json({ type: type || "both", data: sortedRepairs });
 });
 
 // @desc search for car services by generated Code with pagination
@@ -614,8 +644,12 @@ exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
 // @access Private
 exports.getCarRepairsByGenCode = asyncHandler(async (req, res, next) => {
   const { generatedCode } = req.params;
+  const { type } = req.query;
 
-  // Find the car by generated code
+  if (type && !["periodic", "nonPeriodic"].includes(type)) {
+    return next(new apiError("Type must be 'periodic' or 'nonPeriodic'", 400));
+  }
+
   const car = await Car.findOne({ generatedCode });
   if (!car) {
     return next(
@@ -626,29 +660,68 @@ exports.getCarRepairsByGenCode = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Set up pagination and other features for car repairs
-  const documentsCount = await Repairing.countDocuments({
-    carNumber: { $in: car.carNumber },
-  });
-  const apiFeatures = new ApiFeatures(
-    Repairing.find({ carNumber: { $in: car.carNumber } }),
-    req.query,
-  )
+  const filter = { carNumber: car.carNumber };
+  if (type) filter.type = type;
+
+  const documentsCount = await Repairing.countDocuments(filter);
+  const apiFeatures = new ApiFeatures(Repairing.find(filter), req.query)
     .paginate(documentsCount)
     .filter()
-    .search("Repairing") // Specify fields for search if needed
+    .search("Repairing")
     .limitFields();
 
   const { mongooseQuery, paginationResult } = apiFeatures;
   let repairs = await mongooseQuery;
+  exports.getCarRepairsByGenCode = asyncHandler(async (req, res, next) => {
+    const { generatedCode } = req.params;
+    const { type } = req.query;
 
-  // Sort repairs by creation date
+    if (type && !["periodic", "nonPeriodic"].includes(type)) {
+      return next(
+        new apiError("Type must be 'periodic' or 'nonPeriodic'", 400),
+      );
+    }
+
+    const car = await Car.findOne({ generatedCode });
+    if (!car) {
+      return next(
+        new apiError(
+          `Can't find car with this generated Code: ${generatedCode}`,
+          404,
+        ),
+      );
+    }
+
+    const filter = { carNumber: car.carNumber };
+    if (type) filter.type = type;
+
+    const documentsCount = await Repairing.countDocuments(filter);
+    const apiFeatures = new ApiFeatures(Repairing.find(filter), req.query)
+      .paginate(documentsCount)
+      .filter()
+      .search("Repairing")
+      .limitFields();
+
+    const { mongooseQuery, paginationResult } = apiFeatures;
+    let repairs = await mongooseQuery;
+
+    repairs = repairs.sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+    );
+
+    res.status(200).json({
+      type: type || "both",
+      results: repairs.length,
+      paginationResult,
+      data: repairs,
+    });
+  });
   repairs = repairs.sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
   );
 
-  // Respond with paginated repair data
   res.status(200).json({
+    type: type || "both",
     results: repairs.length,
     paginationResult,
     data: repairs,

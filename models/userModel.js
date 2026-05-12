@@ -78,6 +78,12 @@ const userSchema = new mongoose.Schema(
           type: String,
           required: [true, "model is required"],
         },
+        image: {
+          type: String,
+        },
+        imagePublicId: {
+          type: String,
+        },
       },
     ],
     vertified: {
