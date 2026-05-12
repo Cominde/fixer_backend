@@ -49,6 +49,7 @@ exports.sendRepairDoneNotification = async (carNumber) => {
 // ─── 2. Car Needs Check (State = "Need to check") ─────────────────
 exports.sendNeedsCheckNotification = async (carNumber) => {
   const user = await findUserByCarNumber(carNumber);
+  console.log(user);
   if (!user?.fcmToken) return;
 
   await admin.messaging().send({
@@ -204,6 +205,33 @@ exports.sendNotificationToAllUsers = asyncHandler(async (req, res, next) => {
     apns: { payload: { aps: { sound: "default" } } },
   });
 
-  console.log("[FCM] Broadcast sent via topic: all_users");
   res.json({ success: true, message: `Notification sent to all users` });
+});
+
+// @desc send notification to login user if car need to check
+// @Route post /api/v2/auth/loginByCode
+// @access public
+exports.sendNeedsCheckNotification = asyncHandler(async (req, res, next) => {
+  const car = req.car;
+
+  // 👇 only send if car needs check
+  if (car?.State === "Need to check") {
+    const user = await findUserByCarNumber(car.carNumber);
+    if (user?.fcmToken) {
+      await admin.messaging().send({
+        token: user.fcmToken,
+        notification: {
+          title: "⚠️ Car Needs Inspection",
+          body: `Your car with number ${car.carNumber} is due for a check-up.`,
+        },
+        data: { type: "needs_check", carNumber: String(car.carNumber) },
+        android: { priority: "high" },
+        apns: { payload: { aps: { sound: "default" } } },
+      });
+      console.log(`✅ Notification sent for car: ${car.carNumber}`);
+    }
+  }
+
+  // always send login response regardless
+  res.status(200).json(req.loginResponse);
 });

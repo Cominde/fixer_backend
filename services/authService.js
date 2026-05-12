@@ -100,12 +100,10 @@ exports.signup = asyncHandler(async (req, res, next) => {
 // @route   GET /api/v1/auth/loginByCarCode
 // @access  Public
 exports.loginByCarCode = asyncHandler(async (req, res, next) => {
-  // Check if carCode and password are provided in the request body
   if (!req.body.carCode || !req.body.password) {
     return next(new ApiError("Car code and password are required", 400));
   }
 
-  // Find the user by carCode and check if password is correct
   const user = await User.findOne({
     car: { $elemMatch: { carCode: req.body.carCode } },
     password: req.body.password,
@@ -114,9 +112,11 @@ exports.loginByCarCode = asyncHandler(async (req, res, next) => {
   if (!user) {
     return next(new ApiError("Incorrect carCode or password", 401));
   }
+
   if (user.fcmToken) {
     await admin.messaging().subscribeToTopic(user.fcmToken, "all_users");
   }
+
   let carNumber = 0;
   for (var i = 0; i < user.car.length; i++) {
     if (user.car[i].carCode == req.body.carCode) {
@@ -124,25 +124,25 @@ exports.loginByCarCode = asyncHandler(async (req, res, next) => {
       break;
     }
   }
+
   if (!carNumber) {
     return next(new ApiError("No car found for the given carCode", 404));
   }
-  const car = await Car.findOne({ carNumber });
 
+  const car = await Car.findOne({ carNumber });
   if (!car) {
     return next(new ApiError("No car found for the given carCode", 404));
   }
-  if (car.State == "Need to check") {
-    await sendNeedsCheckNotification(car.carNumber);
-  }
 
   const token = createToken(user._id);
-
   delete user._doc.password;
   delete user._doc.car;
 
-  // Send response to client side
-  res.status(200).json({ data: { user, car }, token });
+  // 👇 attach to req before calling next
+  req.car = car;
+  req.loginResponse = { data: { user, car }, token };
+
+  next();
 });
 
 // @desc   make sure the user is logged in

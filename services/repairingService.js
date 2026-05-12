@@ -517,11 +517,14 @@ exports.updateServiceStateById = asyncHandler(async (req, res, next) => {
       const parsedNextPerDate = new Date(car.nextRepairDate);
       if (currentDate < parsedNextPerDate) {
         car.State = "Good";
+        await sendRepairDoneNotification(repairService.carNumber);
       } else {
         car.State = "Need to check";
+        await sendNeedsCheckNotification(repairService.carNumber);
       }
     } else {
       car.State = "Good";
+      await sendRepairDoneNotification(repairService.carNumber);
     }
   } else {
     car.State = "Repair";

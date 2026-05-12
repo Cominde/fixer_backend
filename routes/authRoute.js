@@ -24,7 +24,7 @@ const {
   listPasskeys,
   revokePasskey,
 } = require("../services/passkeyAuthController");
-
+const { sendNeedsCheckNotification } = require("../services/notificationFire");
 const router = express.Router();
 
 /**
@@ -126,7 +126,12 @@ router.post("/admin/login", loginByMail);
  *       400:
  *         description: Invalid car code
  */
-router.post("/loginByCode", loginByCodeValidator, loginByCarCode);
+router.post(
+  "/loginByCode",
+  loginByCodeValidator,
+  loginByCarCode,
+  sendNeedsCheckNotification,
+);
 
 /**
  * @swagger
