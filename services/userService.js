@@ -387,7 +387,7 @@ exports.searchForUser = asyncHandler(async (req, res, next) => {
 
   if (!documents || documents.length === 0) {
     return next(
-      new apiError(
+      new ApiError(
         `No user found for the search string "${searchString}"`,
         404,
       ),
