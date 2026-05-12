@@ -6,14 +6,20 @@ const User = require("../models/userModel");
 const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
 const asyncHandler = require("express-async-handler");
-
+const {
+  sendNeedsCheckNotification,
+  sendRepairDoneNotification,
+} = require("./notificationFire");
+const { normalizeCarNumber } = require("../utils/carNumberCheck");
 // @desc get home prams by car Number
 // @Route GET /api/v1/Home/:carNumber
 // @access private
 exports.getHomepram = asyncHandler(async (req, res, next) => {
   const { carNumber } = req.params;
 
-  const car = await Car.findOne({ carNumber });
+  const normalizedCarNumber = normalizeCarNumber(carNumber);
+
+  const car = await Car.findOne({ carNumber: normalizedCarNumber });
 
   if (!car) {
     return next(
@@ -21,6 +27,21 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
     );
   }
 
+  const user = await User.findOne({ "car.carNumber": normalizedCarNumber });
+
+  if (user?.fcmToken && car.State === "Need to check") {
+    try {
+      await sendNeedsCheckNotification(normalizedCarNumber);
+      console.log(`✅ Notification sent for car: ${normalizedCarNumber}`);
+    } catch (err) {
+      if (err.code === "messaging/registration-token-not-registered") {
+        return next(
+          new apiError("the FCM token of the user is not found", 400),
+        );
+      }
+      console.log(`❌ FCM error: ${err.message}`);
+    }
+  }
   const repairing = await Repairing.findById(car.repairing_id);
 
   if (!repairing) {
@@ -34,10 +55,6 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
       periodicRepairs: car.periodicRepairs || 0,
       nonperiodicRepairs: car.nonPeriodicRepairs || 0,
     };
-
-    if (!car.nextRepairDate && !car.lastRepairDate) {
-      return res.status(200).json({ data: defaultRepairData });
-    }
 
     return res.status(200).json({ data: defaultRepairData });
   }
