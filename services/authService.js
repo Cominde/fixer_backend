@@ -168,7 +168,11 @@ exports.protect = asyncHandler(async (req, res, next) => {
   const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
 
   //check if user exists
-  const currentUser = await User.findById(decoded.userId);
+  const userId =
+    decoded.userId && decoded.userId.userId
+      ? decoded.userId.userId
+      : decoded.userId;
+  const currentUser = await User.findById(userId);
   if (!currentUser) {
     return next(
       new ApiError(
