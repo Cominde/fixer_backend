@@ -115,6 +115,7 @@ exports.loginByCarCode = asyncHandler(async (req, res, next) => {
 
   if (user.fcmToken) {
     await admin.messaging().subscribeToTopic(user.fcmToken, "all_users");
+    console.log(admin.messaging().subscribeToTopic(user.fcmToken, "all_users"));
   }
 
   let carNumber = 0;
@@ -141,7 +142,7 @@ exports.loginByCarCode = asyncHandler(async (req, res, next) => {
   // 👇 attach to req before calling next
   req.car = car;
   req.loginResponse = { data: { user, car }, token };
-
+  console.log("✅ loginByCarCode done, calling next()"); // 👈 add this
   next();
 });
 

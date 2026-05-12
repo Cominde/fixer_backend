@@ -214,24 +214,31 @@ exports.sendNotificationToAllUsers = asyncHandler(async (req, res, next) => {
 exports.sendNeedsCheckNotification = asyncHandler(async (req, res, next) => {
   const car = req.car;
 
-  // 👇 only send if car needs check
   if (car?.State === "Need to check") {
     const user = await findUserByCarNumber(car.carNumber);
     if (user?.fcmToken) {
-      await admin.messaging().send({
-        token: user.fcmToken,
-        notification: {
-          title: "⚠️ Car Needs Inspection",
-          body: `Your car with number ${car.carNumber} is due for a check-up.`,
-        },
-        data: { type: "needs_check", carNumber: String(car.carNumber) },
-        android: { priority: "high" },
-        apns: { payload: { aps: { sound: "default" } } },
-      });
-      console.log(`✅ Notification sent for car: ${car.carNumber}`);
+      try {
+        await admin.messaging().send({
+          token: user.fcmToken,
+          notification: {
+            title: "⚠️ Car Needs Inspection",
+            body: `Your car with number ${car.carNumber} is due for a check-up.`,
+          },
+          data: { type: "needs_check", carNumber: String(car.carNumber) },
+          android: { priority: "high" },
+          apns: { payload: { aps: { sound: "default" } } },
+        });
+        console.log(`✅ Notification sent for car: ${car.carNumber}`);
+      } catch (err) {
+        // 👇 token is invalid, remove it from the database
+        if (err.code === "messaging/registration-token-not-registered") {
+          console.log(`❌ Invalid FCM token for user ${user._id}, clearing it`);
+        } else {
+          console.log(`❌ FCM error: ${err.message}`);
+        }
+      }
     }
   }
 
-  // always send login response regardless
   res.status(200).json(req.loginResponse);
 });
