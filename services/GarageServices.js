@@ -38,6 +38,7 @@ exports.addCar = asyncHandler(async (req, res, next) => {
 
   // Check duplicate carNumber
   const existingCar = await Car.findOne({ carNumber });
+  console.log(existingCar);
   if (existingCar) {
     return next(
       new apiError(

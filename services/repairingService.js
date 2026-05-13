@@ -102,8 +102,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   let nonperiodicRepairs = 0;
   const const_part_of_id = "2021";
   let complete = false;
-  const carNumber = normalizeCarNumber(req.body.carNumber);
   const {
+    carNumber,
     components,
     services,
     additions,
@@ -1199,33 +1199,77 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
   // Find repair by ID
   const repair = await Repairing.findById(id);
   if (!repair) {
-    new apiError(`there is no repair with this id ${id}`, 404);
+    return next(new apiError(`there is no repair with this id ${id}`, 404));
   }
 
-  // Check if components array is not empty
+  // Restore inventory quantities if components exist
   if (repair.component && repair.component.length > 0) {
     for (const component of repair.component) {
       const { componentId, quantity } = component;
-
       const inventoryItem = await Inventory.findOne({ componentId });
       if (inventoryItem) {
         inventoryItem.quantity += quantity;
         await inventoryItem.save();
       } else {
-        new apiError(`there is no component with this id ${componentId}`, 404);
+        return next(
+          new apiError(
+            `there is no component with this id ${componentId}`,
+            404,
+          ),
+        );
       }
     }
   }
 
-  if (repair.complete) {
-    const car = await Car.findOne({ repairing_id: id });
-    if (car) {
-      car.repairing_id = null;
-      await car.save();
+  // Revert car data
+  const car = await Car.findOne({ carNumber: repair.carNumber });
+  if (car) {
+    // Subtract repair type count
+    if (repair.type === "nonPeriodic") {
+      car.nonPeriodicRepairs = Math.max(0, (car.nonPeriodicRepairs || 0) - 1);
+    } else {
+      car.periodicRepairs = Math.max(0, (car.periodicRepairs || 0) - 1);
     }
+
+    // Clear completed repair fields
+    car.completedServicesRatio = undefined;
+    car.nextRepairDistance = undefined;
+    car.nextRepairDate = undefined;
+    car.repairing_id = undefined;
+    car.repairing = false;
+
+    // Find the last repair before the one being deleted
+    const previousRepair = await Repairing.findOne({
+      carNumber: repair.carNumber,
+      _id: { $ne: id }, // exclude current repair
+      complete: true, // only completed repairs
+    }).sort({ createdAt: -1 }); // get the most recent one
+
+    if (previousRepair) {
+      car.lastRepairDate = previousRepair.updatedAt;
+      car.nextRepairDate = previousRepair.nextRepairDate;
+
+      // Check if nextRepairDate is in the future or past
+      const now = new Date();
+      if (
+        previousRepair.nextRepairDate &&
+        previousRepair.nextRepairDate > now
+      ) {
+        car.State = "Good";
+      } else {
+        car.State = "Need to check";
+      }
+    } else {
+      // No previous repairs exist
+      car.nextRepairDate = undefined;
+      car.lastRepairDate = undefined;
+      car.State = "Good"; // no repairs at all = good
+    }
+
+    await car.save();
   }
+
   await repair.deleteOne();
-  console.log(`Repair document with ID ${id} successfully deleted.`);
 
   res.status(200).json({ message: "deleted successfully" });
 });
