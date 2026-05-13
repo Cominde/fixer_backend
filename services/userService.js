@@ -198,6 +198,7 @@ exports.createUser = asyncHandler(async (req, res, next) => {
     lastRepairDate: req.body.lastRepairDate,
     periodicRepairs: req.body.periodicRepairs,
     nonPeriodicRepairs: req.body.nonPeriodicRepairs,
+    generatedPassword: generatedPassword,
   });
 
   const user = await User.create({
