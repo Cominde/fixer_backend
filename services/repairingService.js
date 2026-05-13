@@ -1134,16 +1134,14 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
   }
 
   if (req.body.nextRepairDate) {
-    if (!repair.complete) {
-      await Car.findOneAndUpdate(
-        { carNumber: repair.carNumber },
-        {
-          lastRepairDate: new Date(),
-          nextRepairDate: req.body.nextRepairDate,
-        },
-        { new: true },
-      );
-    }
+    await Car.findOneAndUpdate(
+      { carNumber: repair.carNumber },
+      {
+        lastRepairDate: new Date(),
+        nextRepairDate: req.body.nextRepairDate,
+      },
+      { new: true },
+    );
     repair.nextRepairDate = req.body.nextRepairDate;
   }
 
