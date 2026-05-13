@@ -117,6 +117,23 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     nextRepairDistance,
   } = req.body;
 
+  // ✅ Validate periodic required fields
+  if (type === "periodic") {
+    if (!nextRepairDistance) {
+      return next(
+        new apiError(
+          "nextRepairDistance is required for periodic repairs",
+          400,
+        ),
+      );
+    }
+    if (!nextPerDate) {
+      return next(
+        new apiError("nextRepairDate is required for periodic repairs", 400),
+      );
+    }
+  }
+
   if (req.body.manually == "True" || req.body.manually == true) {
     const id = req.body.id;
     const parsedCarCode = parseInt(id, 10);
@@ -135,6 +152,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   } else {
     newId = await generateNewRepairId("2021");
   }
+
   if (!components || !services || !additions) {
     return next(
       new apiError(
@@ -175,7 +193,6 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       );
     }
     inventoryComponent.quantity -= quantity;
-
     await inventoryComponent.save();
 
     const componentPrice = inventoryComponent.price * quantity;
@@ -187,18 +204,15 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       price: componentPrice,
     });
   }
-  /*if (type == "periodic") {
-      periodicRepairs += 1;
-    } else {
-      nonperiodicRepairs += 1;
-    }*/
 
   const reCar = await Car.findOne({ carNumber: carNumber });
   if (!reCar) {
     return next(new apiError(`No car for this number ${carNumber}`, 404));
   }
+
   periodicRepairs = reCar.periodicRepairs;
   nonperiodicRepairs = reCar.nonPeriodicRepairs;
+
   if (type == "periodic" || type == "nonPeriodic") {
     if (type == "periodic") {
       periodicRepairs += 1;
@@ -210,29 +224,29 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       new apiError(`the type must be periodic or nonPeriodic only`, 400),
     );
   }
+
   reCar.periodicRepairs = periodicRepairs;
   reCar.nonPeriodicRepairs = nonperiodicRepairs;
   reCar.distances = distance;
-
   reCar.save();
+
   const currentDate = new Date();
   const parsedNextPerDate = new Date(nextPerDate);
+
   if (completedServices === totalServicesCount) {
     complete = true;
-    const lastRepairDate = new Date();
-    const car = await Car.findOneAndUpdate(
+    await Car.findOneAndUpdate(
       { carNumber: carNumber },
       {
-        lastRepairDate: lastRepairDate,
-        nextRepairDate: nextPerDate,
+        lastRepairDate: new Date(),
         repairing: !complete,
+        ...(type === "periodic" && {
+          nextRepairDate: nextPerDate,
+          nextRepairDistance: nextRepairDistance,
+        }),
       },
       { new: true },
     );
-
-    if (!car) {
-      return next(new apiError(`No car for this number ${carNumber}`, 404));
-    }
   }
 
   const completedServicesRatio =
@@ -240,14 +254,20 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   const priceAfterDiscount = totalPrice - discount;
 
   let state = "";
-
   if (!complete) {
     state = "Repair";
-  } else if (currentDate < parsedNextPerDate && complete) {
+  } else if (
+    type === "periodic" &&
+    currentDate < parsedNextPerDate &&
+    complete
+  ) {
     state = "Good";
-  } else {
+  } else if (type === "periodic") {
     state = "Need to check";
+  } else {
+    state = "Good";
   }
+
   const car_state = await Car.findOneAndUpdate(
     { carNumber: carNumber },
     { State: state },
@@ -257,17 +277,20 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   if (!car_state) {
     return next(new apiError(`No car for this number ${carNumber}`, 404));
   }
-  await car_state.save();
-  const car_ratio = await Car.findOneAndUpdate(
+
+  // ✅ always save both nextRepairDate and nextRepairDistance if periodic
+  await Car.findOneAndUpdate(
     { carNumber: carNumber },
-    { completedServicesRatio: completedServicesRatio, nextRepairDistance },
+    {
+      completedServicesRatio: completedServicesRatio,
+      ...(type === "periodic" && {
+        nextRepairDistance,
+        nextRepairDate: nextPerDate,
+      }),
+    },
     { new: true },
   );
 
-  if (!car_ratio) {
-    return next(new apiError(`No car for this number ${carNumber}`, 404));
-  }
-  await car_ratio.save();
   const expectedDate = new Date();
   expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
 
@@ -292,9 +315,12 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     Note1,
     Note2,
     distance,
-    nextRepairDistance,
-    nextRepairDate: nextPerDate,
+    ...(type === "periodic" && {
+      nextRepairDistance,
+      nextRepairDate: nextPerDate,
+    }),
   });
+
   if (!complete) {
     const car = await Car.findOneAndUpdate(
       { carNumber: carNumber },
@@ -307,6 +333,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     }
     await car.save();
   }
+
   res.status(200).json();
 });
 
@@ -790,16 +817,36 @@ exports.suggestNextCodeNumber = asyncHandler(async (req, res, next) => {
 // @access private
 exports.updateRepair = asyncHandler(async (req, res, next) => {
   const repair = await Repairing.findById(req.params.id);
-
   if (!repair) {
     return next(new apiError(`No repair for this ID: ${req.params.id}`, 404));
   }
+
   let priceAfterDiscount = repair.priceAfterDiscount || 0;
   let totalPrice = repair.totalPrice || 0;
   let updateTotalPrice = 0;
   let newComplete = false;
   let diffQuantity = 0;
   let diffPrice = 0;
+
+  const repairType = req.body.type || repair.type;
+
+  // ✅ Validate periodic required fields
+  if (req.body.type === "periodic") {
+    if (!req.body.nextRepairDate && !repair.nextRepairDate) {
+      return next(
+        new apiError("nextRepairDate is required for periodic repairs", 400),
+      );
+    }
+    if (!req.body.nextRepairDistance && !repair.nextRepairDistance) {
+      return next(
+        new apiError(
+          "nextRepairDistance is required for periodic repairs",
+          400,
+        ),
+      );
+    }
+  }
+
   if (req.body.genId) {
     if (!/^2021\d*$/.test(req.body.genId)) {
       return next(
@@ -824,9 +871,9 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
 
     repair.genId = req.body.genId;
   }
+
   if (req.body.components && req.body.components.length > 0) {
     for (const { id: componentId, quantity } of req.body.components) {
-      //search in the repair components
       const repairComponent = repair.component.find(
         (comp) => comp._id.toString() === componentId,
       );
@@ -848,14 +895,12 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
               ),
             );
           }
-          //remove the component from the repair
           repair.component = repair.component.filter(
             (comp) => comp._id.toString() !== componentId,
           );
         } else {
           if (repairComponent.quantity < quantity) {
             diffQuantity = quantity - repairComponent.quantity;
-
             if (inventory) {
               inventory.quantity -= diffQuantity;
               diffPrice = inventory.price * diffQuantity;
@@ -872,7 +917,6 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
             repairComponent.quantity = quantity;
           } else if (repairComponent.quantity > quantity) {
             diffQuantity = repairComponent.quantity - quantity;
-
             if (inventory) {
               inventory.quantity += diffQuantity;
               diffPrice = inventory.price * diffQuantity;
@@ -904,24 +948,21 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
             ),
           );
         }
-        if (inventoryComponent) {
-          if (quantity === 0) {
-            return next(
-              new apiError(
-                `in the add operation the quantity must be greater than zero`,
-                404,
-              ),
-            );
-          }
+        if (quantity === 0) {
+          return next(
+            new apiError(
+              `in the add operation the quantity must be greater than zero`,
+              404,
+            ),
+          );
         }
-
         if (
           inventoryComponent.quantity < quantity ||
           inventoryComponent.quantity < 0
         ) {
           return next(
             new apiError(
-              `Not enough quantity for component with ID ${id}`,
+              `Not enough quantity for component with ID ${componentId}`,
               400,
             ),
           );
@@ -990,12 +1031,12 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
 
         for (const { price, state } of req.body.services) {
           updateTotalPrice = updateTotalPrice + price;
-
           totalServicesCount++;
           if (state === "completed") {
             completedServices++;
           }
         }
+
         const completedServicesRatio =
           totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
         newComplete = completedServices === totalServicesCount;
@@ -1004,13 +1045,19 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
 
         if (!newComplete) {
           state = "Repair";
-        } else if (currentDate < repair.nextRepairDate && newComplete) {
-          state = "Good";
-          await sendRepairDoneNotification(repairService.carNumber);
+        } else if (repairType === "periodic") {
+          if (currentDate < repair.nextRepairDate) {
+            state = "Good";
+            await sendRepairDoneNotification(repair.carNumber);
+          } else {
+            state = "Need to check";
+            await sendNeedsCheckNotification(repair.carNumber);
+          }
         } else {
-          state = "Need to check";
-          await sendNeedsCheckNotification(repairService.carNumber);
+          state = "Good";
+          await sendRepairDoneNotification(repair.carNumber);
         }
+
         const car_state = await Car.findOneAndUpdate(
           { carNumber: repair.carNumber },
           { State: state },
@@ -1033,6 +1080,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
     diffPrice = 0;
     updateTotalPrice = 0;
   }
+
   if (req.body.additions && req.body.additions.length > 0) {
     for (const { id: additionId, name, price, remove } of req.body.additions) {
       if (additionId) {
@@ -1101,14 +1149,16 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
   }
 
   if (req.body.type) {
-    let periodicRepairs = 0;
-    let nonperiodicRepairs = 0;
     const reCar = await Car.findOne({ carNumber: repair.carNumber });
     if (!reCar) {
-      return next(new apiError(`No car for this number ${carNumber}`, 404));
+      return next(
+        new apiError(`No car for this number ${repair.carNumber}`, 404),
+      );
     }
-    periodicRepairs = reCar.periodicRepairs;
-    nonperiodicRepairs = reCar.nonPeriodicRepairs;
+
+    let periodicRepairs = reCar.periodicRepairs;
+    let nonperiodicRepairs = reCar.nonPeriodicRepairs;
+
     if (req.body.type == "periodic" || req.body.type == "nonPeriodic") {
       if (req.body.type == "periodic") {
         periodicRepairs += 1;
@@ -1119,6 +1169,9 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
         nonperiodicRepairs += 1;
         if (repair.type == "periodic") {
           periodicRepairs -= 1;
+          // ✅ clear periodic fields from car when switching to nonPeriodic
+          reCar.nextRepairDate = undefined;
+          reCar.nextRepairDistance = undefined;
         }
       }
     } else {
@@ -1126,14 +1179,23 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
         new apiError(`the type must be periodic or nonPeriodic only`, 400),
       );
     }
+
     reCar.periodicRepairs = periodicRepairs;
     reCar.nonPeriodicRepairs = nonperiodicRepairs;
-
-    reCar.save();
+    await reCar.save();
     repair.type = req.body.type;
   }
 
+  // ✅ nextRepairDate only for periodic
   if (req.body.nextRepairDate) {
+    if (repairType !== "periodic") {
+      return next(
+        new apiError(
+          "nextRepairDate is only allowed for periodic repairs",
+          400,
+        ),
+      );
+    }
     await Car.findOneAndUpdate(
       { carNumber: repair.carNumber },
       {
@@ -1145,16 +1207,24 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
     repair.nextRepairDate = req.body.nextRepairDate;
   }
 
+  // ✅ nextRepairDistance only for periodic
   if (req.body.nextRepairDistance) {
-    if (!repair.complete) {
-      await Car.findOneAndUpdate(
-        { carNumber: repair.carNumber },
-        { nextRepairDistance: req.body.nextRepairDistance },
-        { new: true },
+    if (repairType !== "periodic") {
+      return next(
+        new apiError(
+          "nextRepairDistance is only allowed for periodic repairs",
+          400,
+        ),
       );
     }
+    await Car.findOneAndUpdate(
+      { carNumber: repair.carNumber },
+      { nextRepairDistance: req.body.nextRepairDistance },
+      { new: true },
+    );
     repair.nextRepairDistance = req.body.nextRepairDistance;
   }
+
   if (req.body.daysItTake) {
     const expectedDate = new Date();
     expectedDate.setDate(
@@ -1162,11 +1232,13 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
     );
     repair.expectedDate = expectedDate;
   }
+
   if (req.body.Note1 || req.body.Note2 || req.body.distance) {
     repair.Note1 = req.body.Note1;
     repair.Note2 = req.body.Note2;
     repair.distance = req.body.distance;
   }
+
   repair.totalPrice = totalPrice;
   repair.priceAfterDiscount = priceAfterDiscount;
 
@@ -1194,7 +1266,6 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
 exports.deleteRepair = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
 
-  // Find repair by ID
   const repair = await Repairing.findById(id);
   if (!repair) {
     return next(new apiError(`there is no repair with this id ${id}`, 404));
@@ -1219,7 +1290,6 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
     }
   }
 
-  // Revert car data
   const car = await Car.findOne({ carNumber: repair.carNumber });
   if (car) {
     // Subtract repair type count
@@ -1229,39 +1299,46 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
       car.periodicRepairs = Math.max(0, (car.periodicRepairs || 0) - 1);
     }
 
-    // Clear completed repair fields
+    // Clear fields
     car.completedServicesRatio = undefined;
-    car.nextRepairDistance = undefined;
-    car.nextRepairDate = undefined;
     car.repairing_id = undefined;
     car.repairing = false;
 
-    // Find the last repair before the one being deleted
+    // Last completed repair of any type → for lastRepairDate
     const previousRepair = await Repairing.findOne({
       carNumber: repair.carNumber,
-      _id: { $ne: id }, // exclude current repair
-      complete: true, // only completed repairs
+      _id: { $ne: id },
+      complete: true,
+    }).sort({ createdAt: -1 });
+
+    car.lastRepairDate = previousRepair ? previousRepair.updatedAt : undefined;
+
+    // ✅ Search ALL repairs for this car and find if ANY is periodic
+    const lastPeriodicRepair = await Repairing.findOne({
+      carNumber: repair.carNumber,
+      _id: { $ne: id }, // exclude the one being deleted
+      type: "periodic", // only periodic
     }).sort({ createdAt: -1 }); // get the most recent one
 
-    if (previousRepair) {
-      car.lastRepairDate = previousRepair.updatedAt;
-      car.nextRepairDate = previousRepair.nextRepairDate;
+    if (lastPeriodicRepair) {
+      // ✅ Found a periodic repair → restore its dates to the car
+      car.nextRepairDate = lastPeriodicRepair.nextRepairDate;
+      car.nextRepairDistance = lastPeriodicRepair.nextRepairDistance;
 
-      // Check if nextRepairDate is in the future or past
       const now = new Date();
       if (
-        previousRepair.nextRepairDate &&
-        previousRepair.nextRepairDate > now
+        lastPeriodicRepair.nextRepairDate &&
+        lastPeriodicRepair.nextRepairDate > now
       ) {
         car.State = "Good";
       } else {
         car.State = "Need to check";
       }
     } else {
-      // No previous repairs exist
+      // ✅ No periodic repairs exist at all → clear the dates
       car.nextRepairDate = undefined;
-      car.lastRepairDate = undefined;
-      car.State = "Good"; // no repairs at all = good
+      car.nextRepairDistance = undefined;
+      car.State = "Good";
     }
 
     await car.save();
