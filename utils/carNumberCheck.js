@@ -30,7 +30,7 @@ exports.normalizeCarNumber = (carNumber) => {
       .filter((c) => /[\u0600-\u06FF]/.test(c))
       .join(" ");
 
-    return `${numberPart} - ${normalizedLetters}`;
+    return `${normalizedLetters} - ${numberPart}`;
   }
 
   return normalized;
