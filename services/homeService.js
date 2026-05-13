@@ -11,6 +11,58 @@ const {
   sendRepairDoneNotification,
 } = require("./notificationFire");
 const { normalizeCarNumber } = require("../utils/carNumberCheck");
+
+// @desc get home prams by car Number
+// @Route GET /api/v1/Home/:carNumber
+// @access private
+/*
+exports.getHomepram = asyncHandler(async (req, res, next) => {
+  const { carNumber } = req.params;
+
+  const car = await Car.findOne({ carNumber });
+
+  if (!car) {
+    return next(
+      new apiError(`Can't find car for this car number ${carNumber}`, 404),
+    );
+  }
+
+  const repairing = await Repairing.findById(car.repairing_id);
+
+  if (!repairing) {
+    const defaultRepairData = {
+      createdDate: "-/-/-",
+      expectedDate: "-/-/-",
+      completedServicesRatio: 0,
+      state: car.State,
+      lastRepairDate: car.lastRepairDate || "-/-/-",
+      nextRepairDate: car.nextRepairDate || "-/-/-",
+      periodicRepairs: car.periodicRepairs || 0,
+      nonperiodicRepairs: car.nonPeriodicRepairs || 0,
+    };
+
+    if (!car.nextRepairDate && !car.lastRepairDate) {
+      return res.status(200).json({ data: defaultRepairData });
+    }
+
+    return res.status(200).json({ data: defaultRepairData });
+  }
+
+  return res.status(200).json({
+    data: {
+      createdDate: repairing.createdAt || "-/-/-",
+      expectedDate: repairing.expectedDate || "-/-/-",
+      completedServicesRatio: repairing.completedServicesRatio || 0,
+      state: car.State,
+      lastRepairDate: car.lastRepairDate || "-/-/-",
+      nextRepairDate: car.nextRepairDate || "-/-/-",
+      periodicRepairs: car.periodicRepairs || 0,
+      nonperiodicRepairs: car.nonPeriodicRepairs || 0,
+      nextRepairDistance: car.nextRepairDistance || "-/-/-",
+    },
+  });
+});
+*/
 // @desc get home prams by car Number
 // @Route GET /api/v1/Home/:carNumber
 // @access private
@@ -55,6 +107,10 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
       periodicRepairs: car.periodicRepairs || 0,
       nonperiodicRepairs: car.nonPeriodicRepairs || 0,
     };
+
+    if (!car.nextRepairDate && !car.lastRepairDate) {
+      return res.status(200).json({ data: defaultRepairData });
+    }
 
     return res.status(200).json({ data: defaultRepairData });
   }
