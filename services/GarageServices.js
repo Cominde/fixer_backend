@@ -10,7 +10,7 @@ const factory = require("./handlersFactory");
 const ApiFeatures = require("../utils/apiFeatures");
 const CategoryCode = require("../models/categoryCode");
 
-const searchService = require("./searchService");
+const { searchService, searchCarService } = require("./searchService");
 const { normalizeCarNumber } = require("../utils/carNumberCheck");
 const { removeBgExternal } = require("../utils/backgroundRemover");
 
@@ -300,22 +300,15 @@ exports.searchForallCars = asyncHandler(async (req, res, next) => {
   let { searchString } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  searchString = normalizeCarNumber(searchString);
-  const { documents, paginationResult } = await searchService({
+  const { documents, paginationResult } = await searchCarService({
     Model: Car,
     searchString,
     page,
     limit,
   });
 
-  if (!documents || documents.length === 0) {
-    return next(
-      new apiError(
-        `No document found for the search string ${searchString}`,
-        404,
-      ),
-    );
-  }
+  if (!documents.length)
+    return next(new apiError(`No car found for "${searchString}"`, 404));
 
   res
     .status(200)
@@ -329,8 +322,7 @@ exports.searchForRepairingCars = asyncHandler(async (req, res, next) => {
   let { searchString } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  searchString = normalizeCarNumber(searchString);
-  const { documents, paginationResult } = await searchService({
+  const { documents, paginationResult } = await searchCarService({
     Model: Car,
     searchString,
     baseFilter: { State: "Repair" },
@@ -338,14 +330,10 @@ exports.searchForRepairingCars = asyncHandler(async (req, res, next) => {
     limit,
   });
 
-  if (!documents || documents.length === 0) {
+  if (!documents.length)
     return next(
-      new apiError(
-        `No document found for the search string ${searchString}`,
-        404,
-      ),
+      new apiError(`No repairing car found for "${searchString}"`, 404),
     );
-  }
 
   res
     .status(200)

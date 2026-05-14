@@ -1,23 +1,23 @@
 exports.normalizeCarNumber = (carNumber) => {
   if (!carNumber) return "";
 
-  // 1. Strip carriage returns, newlines, and leading/trailing whitespace
+  // 1. Strip carriage returns, newlines, trim
   let normalized = carNumber.replace(/[\r\n]/g, "").trim();
 
-  // 2. Convert Arabic-Indic numerals (٠١٢...) to Western (012...)
+  // 2. Convert Arabic-Indic numerals (٠١٢...) to Western
   normalized = normalized.replace(/[٠-٩]/g, (d) =>
     String("٠١٢٣٤٥٦٧٨٩".indexOf(d)),
   );
 
-  // 3. Convert Eastern Arabic-Indic (۰۱۲...) to Western — extra safety
+  // 3. Convert Persian-Indic numerals (۰۱۲...) to Western
   normalized = normalized.replace(/[۰-۹]/g, (d) =>
     String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)),
   );
 
-  // 4. Collapse multiple spaces into one
+  // 4. Collapse spaces
   normalized = normalized.replace(/\s+/g, " ");
 
-  // 5. Normalize any dash variant surrounded by optional spaces → " - "
+  // 5. Normalize any dash variant → " - "
   normalized = normalized.replace(/\s*[-–—−]\s*/g, " - ");
 
   const parts = normalized.split(" - ");
@@ -28,19 +28,18 @@ exports.normalizeCarNumber = (carNumber) => {
     const rawA = parts[0].trim();
     const rawB = parts[1].trim();
 
-    // Determine which part is numbers and which is letters
+    // ✅ Always put numbers first regardless of input order
     const numberPart = isNumbers(rawA) ? rawA : rawB;
     const letterPart = isNumbers(rawA) ? rawB : rawA;
 
-    // Extract only Arabic letters, then join with single spaces between each
+    // Extract only Arabic letters, single space between each
     const arabicLetters = letterPart
       .split("")
-      .filter((c) => /[\u0600-\u06FF]/.test(c)); // drop spaces, Latin chars, symbols
+      .filter((c) => /[\u0600-\u06FF]/.test(c));
 
-    // Rebuild: always "digits - ل م د" (one space between letters)
+    // Always returns: "719 - م ب ق"
     return `${numberPart} - ${arabicLetters.join(" ")}`;
   }
 
-  // Fallback: return whatever we have cleaned up
   return normalized;
 };
