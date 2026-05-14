@@ -10,7 +10,6 @@ const {
   sendNeedsCheckNotification,
   sendRepairDoneNotification,
 } = require("./notificationFire");
-const { normalizeCarNumber } = require("../utils/carNumberCheck");
 
 // @desc get home prams by car Number
 // @Route GET /api/v1/Home/:carNumber
