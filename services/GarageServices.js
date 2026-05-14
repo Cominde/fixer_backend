@@ -297,10 +297,10 @@ exports.updateCar = factory.updateOne(Car);
 // @route   GET /api/v1/Garage/search/:searchString
 // @access  Private
 exports.searchForallCars = asyncHandler(async (req, res, next) => {
-  const { searchString } = req.params;
+  let { searchString } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const searchString = normalizeCarNumber(searchString);
+  searchString = normalizeCarNumber(searchString);
   const { documents, paginationResult } = await searchService({
     Model: Car,
     searchString,
@@ -326,10 +326,10 @@ exports.searchForallCars = asyncHandler(async (req, res, next) => {
 // @route   GET /api/v1/Garage/search/repairing/:searchString
 // @access  Private
 exports.searchForRepairingCars = asyncHandler(async (req, res, next) => {
-  const { searchString } = req.params;
+  let { searchString } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const searchString = normalizeCarNumber(searchString);
+  searchString = normalizeCarNumber(searchString);
   const { documents, paginationResult } = await searchService({
     Model: Car,
     searchString,
