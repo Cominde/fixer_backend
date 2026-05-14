@@ -68,17 +68,18 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
 // @access private
 exports.getHomepram = asyncHandler(async (req, res, next) => {
   const { carNumber } = req.params;
-
+  console.log(carNumber);
   const normalizedCarNumber = normalizeCarNumber(carNumber);
-
+  console.log(normalizedCarNumber);
   const car = await Car.findOne({ carNumber: normalizedCarNumber });
-
+  console.log(car);
   if (!car) {
     return next(
       new apiError(`Can't find car for this car number ${carNumber}`, 404),
     );
   }
 
+  // FCM notification side-effect — does NOT affect the response
   const user = await User.findOne({ "car.carNumber": normalizedCarNumber });
 
   if (user?.fcmToken && car.State === "Need to check") {
@@ -94,25 +95,23 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
       console.log(`❌ FCM error: ${err.message}`);
     }
   }
+
   const repairing = await Repairing.findById(car.repairing_id);
 
   if (!repairing) {
-    const defaultRepairData = {
-      createdDate: "-/-/-",
-      expectedDate: "-/-/-",
-      completedServicesRatio: 0,
-      state: car.State,
-      lastRepairDate: car.lastRepairDate || "-/-/-",
-      nextRepairDate: car.nextRepairDate || "-/-/-",
-      periodicRepairs: car.periodicRepairs || 0,
-      nonperiodicRepairs: car.nonPeriodicRepairs || 0,
-    };
-
-    if (!car.nextRepairDate && !car.lastRepairDate) {
-      return res.status(200).json({ data: defaultRepairData });
-    }
-
-    return res.status(200).json({ data: defaultRepairData });
+    return res.status(200).json({
+      data: {
+        createdDate: "-/-/-",
+        expectedDate: "-/-/-",
+        completedServicesRatio: 0,
+        state: car.State,
+        lastRepairDate: car.lastRepairDate || "-/-/-",
+        nextRepairDate: car.nextRepairDate || "-/-/-",
+        periodicRepairs: car.periodicRepairs || 0,
+        nonperiodicRepairs: car.nonPeriodicRepairs || 0,
+        nextRepairDistance: "-/-/-", // ← added to match repairing branch
+      },
+    });
   }
 
   return res.status(200).json({
