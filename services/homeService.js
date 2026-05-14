@@ -15,7 +15,7 @@ const { normalizeCarNumber } = require("../utils/carNumberCheck");
 // @desc get home prams by car Number
 // @Route GET /api/v1/Home/:carNumber
 // @access private
-
+/*
 exports.getHomepram = asyncHandler(async (req, res, next) => {
   const { carNumber } = req.params;
 
@@ -62,7 +62,7 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
     },
   });
 });
-/*
+*/
 // @desc get home prams by car Number
 // @Route GET /api/v1/Home/:carNumber
 // @access private
@@ -129,7 +129,6 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
     },
   });
 });
-*/
 // @desc Change user photo
 // @Route GET /api/v1/Home/changePhoto
 // @access Public
