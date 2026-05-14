@@ -68,10 +68,7 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
 // @access private
 exports.getHomepram = asyncHandler(async (req, res, next) => {
   const { carNumber } = req.params;
-  console.log(carNumber);
-  const normalizedCarNumber = normalizeCarNumber(carNumber);
-  console.log(normalizedCarNumber);
-  const car = await Car.findOne({ carNumber: normalizedCarNumber });
+  const car = await Car.findOne({ carNumber: carNumber });
   console.log(car);
   if (!car) {
     return next(
@@ -80,12 +77,12 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
   }
 
   // FCM notification side-effect — does NOT affect the response
-  const user = await User.findOne({ "car.carNumber": normalizedCarNumber });
+  const user = await User.findOne({ "car.carNumber": carNumber });
 
   if (user?.fcmToken && car.State === "Need to check") {
     try {
-      await sendNeedsCheckNotification(normalizedCarNumber);
-      console.log(`✅ Notification sent for car: ${normalizedCarNumber}`);
+      await sendNeedsCheckNotification(carNumber);
+      console.log(`✅ Notification sent for car: ${carNumber}`);
     } catch (err) {
       if (err.code === "messaging/registration-token-not-registered") {
         return next(
