@@ -117,13 +117,12 @@ const searchCarService = async ({
   limit = 10,
   sort = { createdAt: -1 },
   select = "",
+  searchField = "carNumber", // ← new param, default is Car model
 }) => {
   page = parseInt(page) || 1;
   limit = parseInt(limit) || 10;
-
   const skip = (page - 1) * limit;
 
-  // normalize input first
   const normalized = normalizeCarNumber(searchString);
   const variants = buildCarNumberVariants(normalized);
   const regexPattern = variants.map(escapeRegex).join("|");
@@ -131,11 +130,10 @@ const searchCarService = async ({
 
   const mongoQuery = {
     ...baseFilter,
-    carNumber: { $regex: searchRegex },
+    [searchField]: { $regex: searchRegex }, // ← uses the field passed in
   };
 
   let mongooseQuery = Model.find(mongoQuery).sort(sort).skip(skip).limit(limit);
-
   if (select) mongooseQuery = mongooseQuery.select(select);
 
   const [documents, totalDocuments] = await Promise.all([
@@ -144,7 +142,6 @@ const searchCarService = async ({
   ]);
 
   const numberOfPages = Math.ceil(totalDocuments / limit);
-
   const paginationResult = {
     currentPage: page,
     limit,

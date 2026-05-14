@@ -12,7 +12,7 @@ const Car = require("../models/Car");
 const ApiFeatures = require("../utils/apiFeatures");
 const { sendCarCredentials } = require("./emailService");
 const CategoryCode = require("../models/categoryCode");
-const searchService = require("./searchService");
+const { searchService, searchCarService } = require("./searchService");
 const { send } = require("process");
 const { STATES } = require("mongoose");
 const { normalizeCarNumber } = require("../utils/carNumberCheck");
@@ -354,46 +354,71 @@ exports.updateLoggedUserData = asyncHandler(async (req, res, next) => {
   res.status(200).json({ data: updatedUser });
 });
 
+// @desc    search i n user schema
+// @route   get /api/v1/users/carCode/:clientType
+// @access  Private
 exports.searchForUser = asyncHandler(async (req, res, next) => {
   const { searchString } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
-  const skip = (page - 1) * limit;
+
+  // Detect if input looks like a car number (has Arabic letters + digits)
+  const isCarNumber = (str) =>
+    /[\u0600-\u06FF]/.test(str) && /\d|[٠-٩]|[۰-۹]/.test(str);
+
+  if (isCarNumber(searchString)) {
+    // ── Car number search via searchCarService ───────────────────────────
+    const { documents, paginationResult } = await searchCarService({
+      Model: User,
+      searchString,
+      page,
+      limit,
+      searchField: "car.carNumber", // tell the service which field to search
+    });
+
+    if (!documents.length)
+      return next(new ApiError(`No user found for "${searchString}"`, 404));
+
+    return res.status(200).json({
+      results: documents.length,
+      totalCount: paginationResult.totalDocuments,
+      paginationResult,
+      data: documents,
+    });
+  }
+
+  // ── Generic search for name, email, phone, role… ────────────────────────
+  const plainRegex = new RegExp(
+    searchString.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    "i",
+  );
 
   const searchQuery = {
     $or: [
-      { name: { $regex: searchString, $options: "i" } },
-      { email: { $regex: searchString, $options: "i" } },
-      { phone: { $regex: searchString, $options: "i" } },
-      { phoneNumber: { $regex: searchString, $options: "i" } },
-      { role: { $regex: searchString, $options: "i" } },
-      {
-        "car.carNumber": {
-          $regex: normalizeCarNumber(searchString),
-          $options: "i",
-        },
-      },
-      { "car.carCode": { $regex: searchString, $options: "i" } },
-      { "car.brand": { $regex: searchString, $options: "i" } },
-      { "car.category": { $regex: searchString, $options: "i" } },
-      { "car.model": { $regex: searchString, $options: "i" } },
+      { name: { $regex: plainRegex } },
+      { email: { $regex: plainRegex } },
+      { phone: { $regex: plainRegex } },
+      { phoneNumber: { $regex: plainRegex } },
+      { role: { $regex: plainRegex } },
+      { "car.carCode": { $regex: plainRegex } },
+      { "car.brand": { $regex: plainRegex } },
+      { "car.category": { $regex: plainRegex } },
+      { "car.model": { $regex: plainRegex } },
     ],
   };
 
-  const totalCount = await User.countDocuments(searchQuery);
-  const documents = await User.find(searchQuery)
-    .select("name _id phoneNumber phone email role car active createdAt")
-    .skip(skip)
-    .limit(limit);
+  const skip = (page - 1) * limit;
 
-  if (!documents || documents.length === 0) {
-    return next(
-      new ApiError(
-        `No user found for the search string "${searchString}"`,
-        404,
-      ),
-    );
-  }
+  const [documents, totalCount] = await Promise.all([
+    User.find(searchQuery)
+      .select("name _id phoneNumber phone email role car active createdAt")
+      .skip(skip)
+      .limit(limit),
+    User.countDocuments(searchQuery),
+  ]);
+
+  if (!documents.length)
+    return next(new ApiError(`No user found for "${searchString}"`, 404));
 
   res.status(200).json({
     results: documents.length,
