@@ -12,6 +12,7 @@ const {
   sendNeedsCheckNotification,
 } = require("./notificationFire");
 const { normalizeCarNumber } = require("../utils/carNumberCheck");
+const { normalizeToUTCDate } = require("../utils/dateUtils"); // ✅ import date normalizer
 
 const generateNewRepairId = async (
   const_part_of_id = "2021",
@@ -110,12 +111,15 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     type,
     discount,
     daysItTake,
-    nextRepairDate,
     Note1,
     Note2,
     distance,
     nextRepairDistance,
   } = req.body;
+
+  // ✅ FIX: Normalize nextRepairDate to UTC midnight to avoid timezone day-shift
+  // "2026/11/15" and "2026-11-15" will both save correctly as 2026-11-15
+  const nextRepairDate = normalizeToUTCDate(req.body.nextRepairDate);
 
   // ✅ Validate periodic required fields
   if (type === "periodic") {
@@ -231,7 +235,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   reCar.save();
 
   const currentDate = new Date();
-  const parsedNextPerDate = new Date(nextRepairDate);
+  // ✅ FIX: use already-normalized nextRepairDate instead of re-parsing with new Date()
+  const parsedNextPerDate = nextRepairDate;
 
   if (completedServices === totalServicesCount) {
     complete = true;
@@ -241,7 +246,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
         lastRepairDate: new Date(),
         repairing: !complete,
         ...(type === "periodic" && {
-          nextRepairDate: nextRepairDate,
+          nextRepairDate: nextRepairDate, // ✅ normalized
           nextRepairDistance: nextRepairDistance,
         }),
       },
@@ -285,7 +290,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       completedServicesRatio: completedServicesRatio,
       ...(type === "periodic" && {
         nextRepairDistance,
-        nextRepairDate: nextRepairDate,
+        nextRepairDate: nextRepairDate, // ✅ normalized
       }),
     },
     { new: true },
@@ -317,7 +322,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     distance,
     ...(type === "periodic" && {
       nextRepairDistance,
-      nextRepairDate: nextRepairDate,
+      nextRepairDate: nextRepairDate, // ✅ normalized
     }),
   });
 
@@ -541,7 +546,8 @@ exports.updateServiceStateById = asyncHandler(async (req, res, next) => {
     car.lastRepairDate = currentDate;
 
     if (car.nextRepairDate) {
-      const parsedNextPerDate = new Date(car.nextRepairDate);
+      // ✅ FIX: normalize before comparing to avoid timezone day-shift
+      const parsedNextPerDate = normalizeToUTCDate(car.nextRepairDate);
       if (currentDate < parsedNextPerDate) {
         car.State = "Good";
         await sendRepairDoneNotification(repairingDoc.carNumber);
@@ -830,9 +836,14 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
 
   const repairType = req.body.type || repair.type;
 
+  // ✅ FIX: Normalize incoming nextRepairDate early to avoid timezone day-shift
+  const incomingNextRepairDate = req.body.nextRepairDate
+    ? normalizeToUTCDate(req.body.nextRepairDate)
+    : null;
+
   // ✅ Validate periodic required fields
   if (req.body.type === "periodic") {
-    if (!req.body.nextRepairDate && !repair.nextRepairDate) {
+    if (!incomingNextRepairDate && !repair.nextRepairDate) {
       return next(
         new apiError("nextRepairDate is required for periodic repairs", 400),
       );
@@ -1046,7 +1057,9 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
         if (!newComplete) {
           state = "Repair";
         } else if (repairType === "periodic") {
-          if (currentDate < repair.nextRepairDate) {
+          // ✅ FIX: normalize repair.nextRepairDate before comparing
+          const parsedNextPerDate = normalizeToUTCDate(repair.nextRepairDate);
+          if (parsedNextPerDate && currentDate < parsedNextPerDate) {
             state = "Good";
             await sendRepairDoneNotification(repair.carNumber);
           } else {
@@ -1187,7 +1200,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
   }
 
   // ✅ nextRepairDate only for periodic
-  if (req.body.nextRepairDate) {
+  if (incomingNextRepairDate) {
     if (repairType !== "periodic") {
       return next(
         new apiError(
@@ -1200,11 +1213,11 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
       { carNumber: repair.carNumber },
       {
         lastRepairDate: new Date(),
-        nextRepairDate: req.body.nextRepairDate,
+        nextRepairDate: incomingNextRepairDate, // ✅ normalized
       },
       { new: true },
     );
-    repair.nextRepairDate = req.body.nextRepairDate;
+    repair.nextRepairDate = incomingNextRepairDate; // ✅ normalized
   }
 
   // ✅ nextRepairDistance only for periodic
@@ -1322,14 +1335,17 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
 
     if (lastPeriodicRepair) {
       // ✅ Found a periodic repair → restore its dates to the car
-      car.nextRepairDate = lastPeriodicRepair.nextRepairDate;
+      // ✅ FIX: normalize before saving to avoid timezone day-shift
+      car.nextRepairDate = normalizeToUTCDate(
+        lastPeriodicRepair.nextRepairDate,
+      );
       car.nextRepairDistance = lastPeriodicRepair.nextRepairDistance;
 
       const now = new Date();
-      if (
-        lastPeriodicRepair.nextRepairDate &&
-        lastPeriodicRepair.nextRepairDate > now
-      ) {
+      const normalizedNext = normalizeToUTCDate(
+        lastPeriodicRepair.nextRepairDate,
+      );
+      if (normalizedNext && normalizedNext > now) {
         car.State = "Good";
       } else {
         car.State = "Need to check";
