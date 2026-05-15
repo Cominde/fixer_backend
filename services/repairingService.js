@@ -110,7 +110,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     type,
     discount,
     daysItTake,
-    nextPerDate,
+    nextRepairDate,
     Note1,
     Note2,
     distance,
@@ -127,7 +127,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
         ),
       );
     }
-    if (!nextPerDate) {
+    if (!nextRepairDate) {
       return next(
         new apiError("nextRepairDate is required for periodic repairs", 400),
       );
@@ -231,7 +231,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   reCar.save();
 
   const currentDate = new Date();
-  const parsedNextPerDate = new Date(nextPerDate);
+  const parsedNextPerDate = new Date(nextRepairDate);
 
   if (completedServices === totalServicesCount) {
     complete = true;
@@ -241,7 +241,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
         lastRepairDate: new Date(),
         repairing: !complete,
         ...(type === "periodic" && {
-          nextRepairDate: nextPerDate,
+          nextRepairDate: nextRepairDate,
           nextRepairDistance: nextRepairDistance,
         }),
       },
@@ -285,7 +285,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       completedServicesRatio: completedServicesRatio,
       ...(type === "periodic" && {
         nextRepairDistance,
-        nextRepairDate: nextPerDate,
+        nextRepairDate: nextRepairDate,
       }),
     },
     { new: true },
@@ -317,7 +317,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     distance,
     ...(type === "periodic" && {
       nextRepairDistance,
-      nextRepairDate: nextPerDate,
+      nextRepairDate: nextRepairDate,
     }),
   });
 
