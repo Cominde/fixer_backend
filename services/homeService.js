@@ -67,8 +67,8 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
 // @Route GET /api/v1/Home/:carNumber
 // @access private
 exports.getHomepram = asyncHandler(async (req, res, next) => {
-  const { carNumber } = req.params;
-
+  let { carNumber } = req.params;
+  carNumber = normalizeCarNumber(carNumber);
   const car = await Car.findOne({ carNumber: carNumber });
 
   if (!car) {
@@ -93,7 +93,6 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
     }
   }
   const repairing = await Repairing.findById(car.repairing_id);
-
   if (!repairing) {
     const defaultRepairData = {
       createdDate: "-/-/-",
@@ -104,6 +103,7 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
       nextRepairDate: car.nextRepairDate || "-/-/-",
       periodicRepairs: car.periodicRepairs || 0,
       nonperiodicRepairs: car.nonPeriodicRepairs || 0,
+      nextRepairDistance: car.nextRepairDistance || 0,
     };
 
     if (!car.nextRepairDate && !car.lastRepairDate) {
@@ -123,7 +123,7 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
       nextRepairDate: car.nextRepairDate || "-/-/-",
       periodicRepairs: car.periodicRepairs || 0,
       nonperiodicRepairs: car.nonPeriodicRepairs || 0,
-      nextRepairDistance: car.nextRepairDistance || "-/-/-",
+      nextRepairDistance: car.nextRepairDistance || 0,
     },
   });
 });
