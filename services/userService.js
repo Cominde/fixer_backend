@@ -105,7 +105,8 @@ exports.createUser = asyncHandler(async (req, res, next) => {
   //console.log("generated code", generatedCode);
   //console.log("generated Password", generatedPassword);
   // 1- Create user
-  const { carNumber, clientType } = req.body;
+  let { carNumber, clientType } = req.body;
+  carNumber = normalizeCarNumber(carNumber);
   let newCarCode;
   //const fuser = await Car.findOne({ email });
   //if (fuser) {
@@ -185,7 +186,7 @@ exports.createUser = asyncHandler(async (req, res, next) => {
 
   const newCar = await Car.create({
     ownerName: req.body.name,
-    carNumber: req.body.carNumber,
+    carNumber: carNumber,
     chassisNumber: req.body.chassisNumber,
     color: req.body.color,
     brand: req.body.brand,
@@ -203,7 +204,6 @@ exports.createUser = asyncHandler(async (req, res, next) => {
 
   const user = await User.create({
     name: req.body.name,
-    carNumber: req.body.carNumber,
     email: req.body.email,
     phoneNumber: req.body.phoneNumber,
     password: generatedPassword,
@@ -211,7 +211,7 @@ exports.createUser = asyncHandler(async (req, res, next) => {
       {
         id: newCar._id,
         carCode: newCarCode,
-        carNumber: req.body.carNumber,
+        carNumber: carNumber,
         brand: req.body.brand,
         category: req.body.category,
         model: req.body.model,

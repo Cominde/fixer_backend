@@ -67,17 +67,21 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
 // @Route GET /api/v1/Home/:carNumber
 // @access private
 exports.getHomepram = asyncHandler(async (req, res, next) => {
-  let { carNumber } = req.params;
-  carNumber = normalizeCarNumber(carNumber);
-  const car = await Car.findOne({ carNumber: carNumber });
+  const { carNumber } = req.params;
+  const normalizedCarNumber = normalizeCarNumber(carNumber);
+
+  const car = await Car.findOne({ carNumber: normalizedCarNumber });
 
   if (!car) {
     return next(
-      new apiError(`Can't find car for this car number ${carNumber}`, 404),
+      new apiError(
+        `Can't find car for this car number ${normalizedCarNumber}`,
+        404,
+      ),
     );
   }
 
-  const user = await User.findOne({ "car.carNumber": carNumber });
+  const user = await User.findOne({ "car.carNumber": normalizedCarNumber });
 
   if (user?.fcmToken && car.State === "Need to check") {
     try {
