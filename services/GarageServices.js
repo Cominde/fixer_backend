@@ -291,7 +291,15 @@ exports.makeCarInRepair = asyncHandler(async (req, res, next) => {
 // @desc    Update specific car
 // @route   PUT /api/v1/Garage/:id
 // @access  Private
-exports.updateCar = factory.updateOne(Car);
+exports.updateCar = [
+  (req, res, next) => {
+    if (req.body.carNumber) {
+      req.body.carNumber = normalizeCarNumber(req.body.carNumber);
+    }
+    next();
+  },
+  factory.updateOne(Car),
+];
 
 // @desc    Search for all cars
 // @route   GET /api/v1/Garage/search/:searchString

@@ -808,8 +808,16 @@ exports.getRepairsReport = asyncHandler(async (req, res, next) => {
     note1: Repair.Note1,
     note2: Repair.Note2,
   };
+  // نحول الـ Repair لـ object عادي عشان نقدر نعدل فيه
+  const repairData = Repair.toObject();
+
+  if (repairData.nextRepairDate) {
+    repairData.nextRepairDate = repairData.nextRepairDate
+      .toISOString()
+      .split("T")[0]; // بيرجع yyyy-mm-dd بس
+  }
   res.status(200).json({
-    repair: Repair,
+    repair: repairData,
     data: info,
   });
 });
@@ -999,95 +1007,101 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
   }
 
   if (req.body.services && req.body.services.length > 0) {
-    for (const { id: serviceId, name, price, remove } of req.body.services) {
-      if (serviceId) {
-        const repairService = repair.Services.find(
-          (comp) => comp._id.toString() === serviceId,
-        );
-        if (repairService) {
-          if (remove) {
-            updateTotalPrice -= repairService.price;
-            repair.Services = repair.Services.filter(
-              (comp) => comp._id.toString() !== serviceId,
-            );
-          } else {
-            if (name) {
-              repairService.name = name;
-            }
-            if (price) {
-              if (repairService.price > price) {
-                diffPrice = repairService.price - price;
-                updateTotalPrice -= diffPrice;
-              } else if (repairService.price < price) {
-                diffPrice = price - repairService.price;
-                updateTotalPrice += diffPrice;
-              }
-              repairService.price = price;
-            }
-          }
-          await repairService.save();
-        } else {
-          return next(
-            new apiError(
-              `Service with id ${serviceId} not found in the repair`,
-              404,
-            ),
+    const existingServiceUpdates = req.body.services.filter((s) => s.id);
+    const newServices = req.body.services.filter((s) => !s.id);
+    for (const {
+      id: serviceId,
+      name,
+      price,
+      remove,
+    } of existingServiceUpdates) {
+      const repairService = repair.Services.find(
+        (comp) => comp._id.toString() === serviceId,
+      );
+      if (repairService) {
+        if (remove) {
+          updateTotalPrice -= repairService.price;
+          repair.Services = repair.Services.filter(
+            (comp) => comp._id.toString() !== serviceId,
           );
+        } else {
+          if (name) {
+            repairService.name = name;
+          }
+          if (price) {
+            if (repairService.price > price) {
+              diffPrice = repairService.price - price;
+              updateTotalPrice += diffPrice;
+            } else if (repairService.price < price) {
+              diffPrice = price - repairService.price;
+              updateTotalPrice -= diffPrice;
+            }
+            repairService.price = price;
+          }
         }
+        await repairService.save();
       } else {
-        let totalServicesCount = repair.Services.length;
-        let completedServices = repair.Services.filter(
-          (service) => service.state === "completed",
-        ).length;
-
-        for (const { price, state } of req.body.services) {
-          updateTotalPrice = updateTotalPrice + price;
-          totalServicesCount++;
-          if (state === "completed") {
-            completedServices++;
-          }
-        }
-
-        const completedServicesRatio =
-          totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
-        newComplete = completedServices === totalServicesCount;
-        const currentDate = new Date();
-        let state = "";
-
-        if (!newComplete) {
-          state = "Repair";
-        } else if (repairType === "periodic") {
-          // ✅ FIX: normalize repair.nextRepairDate before comparing
-          const parsedNextPerDate = normalizeToUTCDate(repair.nextRepairDate);
-          if (parsedNextPerDate && currentDate < parsedNextPerDate) {
-            state = "Good";
-            await sendRepairDoneNotification(repair.carNumber);
-          } else {
-            state = "Need to check";
-            await sendNeedsCheckNotification(repair.carNumber);
-          }
-        } else {
-          state = "Good";
-          await sendRepairDoneNotification(repair.carNumber);
-        }
-
-        const car_state = await Car.findOneAndUpdate(
-          { carNumber: repair.carNumber },
-          { State: state },
-          { new: true },
+        return next(
+          new apiError(
+            `Service with id ${serviceId} not found in the repair`,
+            404,
+          ),
         );
-
-        if (!car_state) {
-          return next(
-            new apiError(`No car for this number ${repair.carNumber}`, 404),
-          );
-        }
-
-        repair.Services = repair.Services.concat(req.body.services);
-        repair.complete = newComplete;
-        repair.completedServicesRatio = completedServicesRatio;
       }
     }
+    if (newServices.length > 0) {
+      let totalServicesCount = repair.Services.length;
+      let completedServices = repair.Services.filter(
+        (service) => service.state === "completed",
+      ).length;
+
+      for (const { price, state } of newServices) {
+        updateTotalPrice = updateTotalPrice + price;
+        totalServicesCount++;
+        if (state === "completed") {
+          completedServices++;
+        }
+      }
+
+      const completedServicesRatio =
+        totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
+      newComplete = completedServices === totalServicesCount;
+      const currentDate = new Date();
+      let state = "";
+
+      if (!newComplete) {
+        state = "Repair";
+      } else if (repairType === "periodic") {
+        const parsedNextPerDate = normalizeToUTCDate(repair.nextRepairDate);
+        if (parsedNextPerDate && currentDate < parsedNextPerDate) {
+          state = "Good";
+          await sendRepairDoneNotification(repair.carNumber);
+        } else {
+          state = "Need to check";
+          await sendNeedsCheckNotification(repair.carNumber);
+        }
+      } else {
+        state = "Good";
+        await sendRepairDoneNotification(repair.carNumber);
+      }
+
+      const car_state = await Car.findOneAndUpdate(
+        { carNumber: repair.carNumber },
+        { State: state },
+        { new: true },
+      );
+
+      if (!car_state) {
+        return next(
+          new apiError(`No car for this number ${repair.carNumber}`, 404),
+        );
+      }
+
+      repair.Services = repair.Services.concat(newServices);
+      repair.complete = newComplete;
+      repair.completedServicesRatio = completedServicesRatio;
+    }
+
     totalPrice = totalPrice + updateTotalPrice;
     priceAfterDiscount = priceAfterDiscount + updateTotalPrice;
     diffPrice = 0;
@@ -1095,7 +1109,14 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
   }
 
   if (req.body.additions && req.body.additions.length > 0) {
-    for (const { id: additionId, name, price, remove } of req.body.additions) {
+    const existingAdditionUpdates = req.body.additions.filter((a) => a.id);
+    const newAdditions = req.body.additions.filter((a) => !a.id);
+    for (const {
+      id: additionId,
+      name,
+      price,
+      remove,
+    } of existingAdditionUpdates) {
       if (additionId) {
         const repairAddition = repair.additions.find(
           (comp) => comp._id.toString() === additionId,
@@ -1130,13 +1151,14 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
             ),
           );
         }
-      } else {
-        for (const { price } of req.body.additions) {
+      }
+      if (newServices.length > 0) {
+        for (const { price } of newAdditions) {
           if (price) {
             updateTotalPrice += Number(price);
           }
         }
-        repair.additions = repair.additions.concat(req.body.additions);
+        repair.additions = repair.additions.concat(newAdditions);
       }
     }
     totalPrice = totalPrice + updateTotalPrice;
