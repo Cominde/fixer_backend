@@ -808,16 +808,9 @@ exports.getRepairsReport = asyncHandler(async (req, res, next) => {
     note1: Repair.Note1,
     note2: Repair.Note2,
   };
-  // نحول الـ Repair لـ object عادي عشان نقدر نعدل فيه
-  const repairData = Repair.toObject();
 
-  if (repairData.nextRepairDate) {
-    repairData.nextRepairDate = repairData.nextRepairDate
-      .toISOString()
-      .split("T")[0]; // بيرجع yyyy-mm-dd بس
-  }
   res.status(200).json({
-    repair: repairData,
+    repair: Repair,
     data: info,
   });
 });
