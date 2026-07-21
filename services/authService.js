@@ -297,6 +297,13 @@ exports.loginByMail = asyncHandler(async (req, res, next) => {
   const authToken = createToken(user._id);
   user.vertified = false;
   user.save({ validateBeforeSave: false });
+  
+  // Subscribe admin to notifications if they have FCM token
+  if (user.fcmToken && user.role === "admin") {
+    await admin.messaging().subscribeToTopic(user.fcmToken, "admin_notifications");
+    console.log(`[FCM] Admin ${user.email} subscribed to admin_notifications`);
+  }
+  
   const userResponse = { ...user._doc };
   delete userResponse.password;
 

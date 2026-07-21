@@ -3,6 +3,7 @@ const User = require("../models/userModel.js");
 const Car = require("../models/Car");
 const asyncHandler = require("express-async-handler");
 const apiError = require("../utils/apiError");
+const booking = require("../models/booking.js");
 
 // ─── Helper: find user by car reference ───────────────────────────
 const findUserByCarNumber = async (carNumber) => {
@@ -149,3 +150,78 @@ exports.sendNotificationToAllUsers = asyncHandler(async (req, res, next) => {
 
   res.json({ success: true, message: `Notification sent to all users` });
 });
+
+// @desc send notification admin for booking request
+// @Route post /api/v2/booking/
+// @access private
+
+exports.notifyAdmins = async ({
+  user_name,
+  carNumber,
+  maintenanceRequest,
+  title,
+  body,
+}) => {
+  const admins = await User.find({
+    role: "admin",
+    fcmToken: { $exists: true, $ne: null },
+  });
+
+  if (admins.length === 0 || !admin.apps.length) return;
+
+  const tokens = admins.map((a) => a.fcmToken);
+  const message = {
+    notification: {
+      title,
+      body,
+    },
+    data: {
+      type: "maintenance_request",
+      requestId: maintenanceRequest._id.toString(),
+    },
+    android: {
+      priority: "high",
+      notification: {
+        tag: maintenanceRequest._id.toString(), // نفس التاج بتاع الإشعار الأصلي عشان يستبدله/يشيله
+      },
+    },
+    apns: {
+      payload: {
+        aps: {
+          sound: "default",
+          "thread-id": maintenanceRequest._id.toString(), // نفس الفكرة على iOS
+        },
+      },
+    },
+    tokens,
+  };
+
+  try {
+    const response = await admin.messaging().sendEachForMulticast(message);
+
+    response.responses.forEach((r, idx) => {
+      if (
+        !r.success &&
+        (r.error?.code === "messaging/registration-token-not-registered" ||
+          r.error?.code === "messaging/invalid-registration-token")
+      ) {
+        User.findByIdAndUpdate(admins[idx]._id, {
+          $unset: { fcmToken: 1 },
+        }).catch(() => {});
+      }
+    });
+
+    return {
+      success: response.successCount > 0,
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+    };
+  } catch (error) {
+    console.error("Failed to notify admins:", error.message);
+    return {
+      success: false,
+      message: "Failed to notify admins",
+      error: error.message,
+    };
+  }
+};

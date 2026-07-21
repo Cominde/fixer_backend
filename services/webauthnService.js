@@ -8,6 +8,7 @@ const User = require("../models/userModel");
 const ApiError = require("../utils/apiError");
 const createToken = require("../utils/createToken");
 const mongoose = require("mongoose");
+const admin = require("../config/fireBase.js");
 // WebAuthn configuration
 const RP_ID = process.env.WEBAUTHN_RP_ID || "localhost";
 const RP_NAME = process.env.WEBAUTHN_RP_NAME || "Fixer Admin";
@@ -427,6 +428,16 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
 
   // Generate JWT
   const authToken = createToken({ userId: user._id });
+
+  // Subscribe admin to notifications if they have FCM token
+  if (user.fcmToken && user.role === "admin") {
+    await admin
+      .messaging()
+      .subscribeToTopic(user.fcmToken, "admin_notifications");
+    console.log(
+      `[FCM] Admin ${user.email} subscribed to admin_notifications via passkey`,
+    );
+  }
 
   const userResponse = { ...user._doc };
   delete userResponse.password;

@@ -29,6 +29,8 @@ const globalError = require("./middlewares/errorMiddleWare");
 const ClearCarData = require("./routes/ClearCarDataRoute");
 const Notification = require("./routes/notificationRoute");
 const SSERoute = require("./utils/sse/sseRoute");
+const Booking = require("./routes/bookingRoute");
+const issueRoute = require("./routes/issueRoute");
 
 //db connection
 dbconnection();
@@ -71,6 +73,8 @@ app.use("/api/V1/appVersion", appVersion);
 app.use("/api/V1/ClearCarData", ClearCarData);
 app.use("/api/V1/Notification", Notification);
 app.use("/api/V1/SSE", SSERoute);
+app.use("/api/V1/Booking", Booking);
+app.use("/api/V1/issues", issueRoute);
 // ping api
 app.get("/api/ping", (req, res) => {
   res.status(200).send("Server is alive!");
