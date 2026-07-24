@@ -10,8 +10,8 @@ const createToken = require("../utils/createToken");
 const mongoose = require("mongoose");
 const admin = require("../config/fireBase.js");
 // WebAuthn configuration
-const RP_ID = process.env.WEBAUTHN_RP_ID || "localhost";
-const RP_NAME = process.env.WEBAUTHN_RP_NAME || "Fixer Admin";
+const RP_ID = process.env.WEBAUTHN_RP_ID || "cominde.org";
+const RP_NAME = process.env.WEBAUTHN_RP_NAME || "Fixer";
 const ALLOWED_ORIGINS = process.env.WEBAUTHN_ALLOWED_ORIGINS
   ? process.env.WEBAUTHN_ALLOWED_ORIGINS.split(",")
   : [
@@ -225,7 +225,7 @@ exports.beginPasskeyRegistration = async (userId, origin) => {
     authenticatorSelection: {
       authenticatorAttachment: "platform",
       userVerification: "required",
-      requireResidentKey: true,
+      residentKey: "preferred",
     },
   };
 
@@ -339,6 +339,7 @@ exports.beginPasskeyLogin = async (email, origin) => {
   return {
     allowCredentials,
     challenge,
+    rpId: RP_ID,
     userVerification: "required",
   };
 };
