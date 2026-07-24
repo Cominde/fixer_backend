@@ -4,3 +4,4 @@ config.env
 
 fixer_backend/
 config/serviceAccountKey.json
+*.md
