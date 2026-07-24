@@ -33,13 +33,14 @@ const extractUserId = (req, next) => {
  * @access  Private (authenticated admin)
  */
 exports.beginRegistration = asyncHandler(async (req, res, next) => {
-  const userId = extractUserId(req, next); // 👈
+  const userId = extractUserId(req, next);
   if (!userId) return;
 
   const { origin } = req.body;
   if (!origin) return next(new ApiError("Origin is required", 400));
 
   const options = await beginPasskeyRegistration(userId, origin);
+  console.log("Registration options:", JSON.stringify(options, null, 2));
   res.status(200).json({ status: "success", data: options });
 });
 
