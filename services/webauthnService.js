@@ -10,7 +10,7 @@ const createToken = require("../utils/createToken");
 const mongoose = require("mongoose");
 const admin = require("../config/fireBase.js");
 // WebAuthn configuration
-const RP_ID = process.env.WEBAUTHN_RP_ID || "cominde.org";
+const DEFAULT_RP_ID = process.env.WEBAUTHN_RP_ID || "cominde.org";
 const RP_NAME = process.env.WEBAUTHN_RP_NAME || "Fixer";
 const ALLOWED_ORIGINS = process.env.WEBAUTHN_ALLOWED_ORIGINS
   ? process.env.WEBAUTHN_ALLOWED_ORIGINS.split(",")
@@ -26,6 +26,32 @@ const ALLOWED_ORIGINS = process.env.WEBAUTHN_ALLOWED_ORIGINS
       "https://fixer-admin.cominde.org",
       "https://fixer.cominde.org",
     ];
+
+/**
+ * Get RP_ID based on origin for multi-domain support
+ */
+const getRpId = (origin) => {
+  const url = new URL(origin);
+  const hostname = url.hostname;
+  
+  // For vercel.app domains, use vercel.app as RP_ID
+  if (hostname.endsWith('vercel.app')) {
+    return 'vercel.app';
+  }
+  
+  // For cominde.org domains, use cominde.org as RP_ID
+  if (hostname.endsWith('cominde.org')) {
+    return 'cominde.org';
+  }
+  
+  // For localhost, use localhost
+  if (hostname === 'localhost' || hostname.startsWith('127.0.0.1')) {
+    return 'localhost';
+  }
+  
+  // Default to environment variable or fallback
+  return DEFAULT_RP_ID;
+};
 
 /**
  * Generate a random challenge
@@ -215,11 +241,14 @@ exports.beginPasskeyRegistration = async (userId, origin) => {
   const challenge = await createChallenge("register", userId);
   console.log("[PASSKEY REGISTRATION] Generated challenge (base64):", challenge);
 
+  const rpId = getRpId(origin);
+  console.log("[PASSKEY REGISTRATION] Dynamic RP_ID for origin:", rpId);
+
   const options = {
     challenge: challenge,
     rp: {
       name: RP_NAME,
-      id: RP_ID,
+      id: rpId,
     },
     user: {
       id: user._id.toString(),
@@ -358,7 +387,8 @@ exports.beginPasskeyLogin = async (email, origin) => {
   if (!user) {
     // Don't reveal if user exists for security
     const challenge = await createChallenge("login", null, email);
-    return { allowCredentials: [], challenge };
+    const rpId = getRpId(origin);
+    return { allowCredentials: [], challenge, rpId };
   }
 
   const passkeys = await Passkey.find({
@@ -375,10 +405,13 @@ exports.beginPasskeyLogin = async (email, origin) => {
   const challenge = await createChallenge("login", user._id, email);
   console.log("Generated login challenge (base64):", challenge);
 
+  const rpId = getRpId(origin);
+  console.log("[PASSKEY LOGIN] Dynamic RP_ID for origin:", rpId);
+
   return {
     allowCredentials,
     challenge,
-    rpId: RP_ID,
+    rpId: rpId,
     userVerification: "required",
   };
 };
