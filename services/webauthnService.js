@@ -10,8 +10,8 @@ const createToken = require("../utils/createToken");
 const mongoose = require("mongoose");
 const admin = require("../config/fireBase.js");
 // WebAuthn configuration
-const RP_ID = process.env.WEBAUTHN_RP_ID || "cominde.org";
-const RP_NAME = process.env.WEBAUTHN_RP_NAME || "Fixer";
+const RP_ID = process.env.WEBAUTHN_RP_ID || "localhost";
+const RP_NAME = process.env.WEBAUTHN_RP_NAME || "Fixer Admin";
 const ALLOWED_ORIGINS = process.env.WEBAUTHN_ALLOWED_ORIGINS
   ? process.env.WEBAUTHN_ALLOWED_ORIGINS.split(",")
   : [
@@ -45,24 +45,28 @@ const validateOrigin = (origin) => {
   console.log("Validating origin:", origin);
   console.log("Allowed origins:", ALLOWED_ORIGINS);
 
-  // Check for exact match or wildcard
+  // Allow localhost wildcard and 127.0.0.1 wildcard for development
+  const isLocalhost =
+    origin.includes("localhost") || origin.includes("127.0.0.1");
+
   const isValidOrigin = ALLOWED_ORIGINS.some((allowed) => {
-    if (allowed === "*") return true;
-    
-    // Handle wildcards for localhost
-    if (allowed.includes("*")) {
-      const pattern = allowed.replace("*", ".*");
-      const regex = new RegExp(`^${pattern}$`);
-      return regex.test(origin);
+    // Exact match for production origins
+    if (!isLocalhost && allowed !== "*" && !origin.startsWith(allowed)) {
+      return false;
     }
-    
-    // Exact match or starts with allowed origin (for subdirectories)
-    return origin === allowed || origin.startsWith(allowed);
+    // Allow any localhost/127.0.0.1 origin in development
+    if (
+      isLocalhost &&
+      (allowed === "http://localhost:*" || allowed === "http://127.0.0.1:*")
+    ) {
+      return true;
+    }
+    // Default check for exact match or wildcard
+    return origin.startsWith(allowed) || allowed === "*";
   });
 
   if (!isValidOrigin) {
     console.log("Origin validation failed for:", origin);
-    console.log("Environment WEBAUTHN_ALLOWED_ORIGINS:", process.env.WEBAUTHN_ALLOWED_ORIGINS);
     throw new ApiError("Origin not allowed", 403);
   }
 
@@ -225,7 +229,7 @@ exports.beginPasskeyRegistration = async (userId, origin) => {
     authenticatorSelection: {
       authenticatorAttachment: "platform",
       userVerification: "required",
-      residentKey: "preferred",
+      requireResidentKey: true,
     },
   };
 
@@ -339,7 +343,6 @@ exports.beginPasskeyLogin = async (email, origin) => {
   return {
     allowCredentials,
     challenge,
-    rpId: RP_ID,
     userVerification: "required",
   };
 };
