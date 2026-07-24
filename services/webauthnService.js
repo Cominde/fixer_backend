@@ -420,6 +420,9 @@ exports.beginPasskeyLogin = async (email, origin) => {
  * Finish passkey login
  */
 exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
+  console.log("[PASSKEY FINISH LOGIN] Starting finish login");
+  console.log("[PASSKEY FINISH LOGIN] Origin:", origin);
+  
   validateOrigin(origin);
 
   // Decode base64 clientDataJSON before parsing
@@ -427,6 +430,10 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
     Buffer.from(clientDataJSON, "base64").toString("utf8"),
   );
   const challenge = clientData.challenge;
+  
+  console.log("[PASSKEY FINISH LOGIN] Client data challenge:", challenge);
+  console.log("[PASSKEY FINISH LOGIN] Client data type:", clientData.type);
+  console.log("[PASSKEY FINISH LOGIN] Client data origin:", clientData.origin);
 
   // Find the challenge
   const challengeDoc = await Challenge.findOne({
@@ -437,21 +444,30 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
   });
 
   if (!challengeDoc) {
+    console.log("[PASSKEY FINISH LOGIN] Challenge not found or expired");
     throw new ApiError("Invalid or expired challenge", 400);
   }
 
+  console.log("[PASSKEY FINISH LOGIN] Challenge validated");
+
   // Verify client data fields
   if (clientData.type !== "webauthn.get") {
+    console.log("[PASSKEY FINISH LOGIN] Invalid client data type:", clientData.type);
     throw new ApiError("Invalid client data type", 400);
   }
 
   if (clientData.origin !== origin) {
+    console.log("[PASSKEY FINISH LOGIN] Origin mismatch:", clientData.origin, "vs", origin);
     throw new ApiError("Origin mismatch", 400);
   }
 
   // Extract credential fields
   const { id, response } = credential;
   const { authenticatorData, signature } = response;
+  
+  console.log("[PASSKEY FINISH LOGIN] Credential ID:", id);
+  console.log("[PASSKEY FINISH LOGIN] Has authenticatorData:", !!authenticatorData);
+  console.log("[PASSKEY FINISH LOGIN] Has signature:", !!signature);
 
   // Find the stored passkey
   const passkey = await Passkey.findOne({
@@ -460,8 +476,11 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
   });
 
   if (!passkey) {
+    console.log("[PASSKEY FINISH LOGIN] Passkey not found for credential ID:", id);
     throw new ApiError("Passkey not found", 400);
   }
+
+  console.log("[PASSKEY FINISH LOGIN] Passkey found, user ID:", passkey.userId);
 
   // FIX: Use proper WebAuthn signature verification
   // Signed data = authenticatorData bytes || SHA256(clientDataJSON raw bytes)
@@ -473,20 +492,29 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
   );
 
   if (!isValidSignature) {
+    console.log("[PASSKEY FINISH LOGIN] Signature verification failed");
     throw new ApiError("Signature verification failed", 400);
   }
 
+  console.log("[PASSKEY FINISH LOGIN] Signature verified successfully");
+
   // Check counter to prevent replay attacks
   const currentCounter = base64url.toBuffer(authenticatorData).readUInt32BE(33);
+  console.log("[PASSKEY FINISH LOGIN] Current counter:", currentCounter, "Stored counter:", passkey.counter);
+  
   if (currentCounter < passkey.counter) {
+    console.log("[PASSKEY FINISH LOGIN] Counter replay attack detected");
     throw new ApiError("Counter replay attack detected", 400);
   }
 
   // Get user
   const user = await User.findById(challengeDoc.userId || passkey.userId);
   if (!user) {
+    console.log("[PASSKEY FINISH LOGIN] User not found");
     throw new ApiError("User not found", 404);
   }
+
+  console.log("[PASSKEY FINISH LOGIN] User found:", user.email);
 
   // Update passkey usage stats
   await Passkey.findByIdAndUpdate(passkey._id, {
@@ -513,6 +541,8 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
   const userResponse = { ...user._doc };
   delete userResponse.password;
   delete userResponse.vertified;
+
+  console.log("[PASSKEY FINISH LOGIN] Login successful for user:", user.email);
 
   return {
     status: "success",
