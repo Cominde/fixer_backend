@@ -1145,7 +1145,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           );
         }
       }
-      if (newServices.length > 0) {
+      if (newAdditions.length > 0) {
         for (const { price } of newAdditions) {
           if (price) {
             updateTotalPrice += Number(price);

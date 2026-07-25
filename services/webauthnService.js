@@ -33,22 +33,22 @@ const ALLOWED_ORIGINS = process.env.WEBAUTHN_ALLOWED_ORIGINS
 const getRpId = (origin) => {
   const url = new URL(origin);
   const hostname = url.hostname;
-  
+
   // For vercel.app domains, use vercel.app as RP_ID
-  if (hostname.endsWith('vercel.app')) {
-    return 'vercel.app';
+  if (hostname.endsWith("vercel.app")) {
+    return "vercel.app";
   }
-  
+
   // For cominde.org domains, use cominde.org as RP_ID
-  if (hostname.endsWith('cominde.org')) {
-    return 'cominde.org';
+  if (hostname.endsWith("cominde.org")) {
+    return "cominde.org";
   }
-  
+
   // For localhost, use localhost
-  if (hostname === 'localhost' || hostname.startsWith('127.0.0.1')) {
-    return 'localhost';
+  if (hostname === "localhost" || hostname.startsWith("127.0.0.1")) {
+    return "localhost";
   }
-  
+
   // Default to environment variable or fallback
   return DEFAULT_RP_ID;
 };
@@ -221,9 +221,12 @@ const markChallengeUsed = async (challengeId) => {
  * Begin passkey registration
  */
 exports.beginPasskeyRegistration = async (userId, origin) => {
-  console.log("[PASSKEY REGISTRATION] Starting registration for userId:", userId);
+  console.log(
+    "[PASSKEY REGISTRATION] Starting registration for userId:",
+    userId,
+  );
   console.log("[PASSKEY REGISTRATION] Origin:", origin);
-  
+
   validateOrigin(origin);
   const id = userId?._id ?? userId;
 
@@ -239,7 +242,10 @@ exports.beginPasskeyRegistration = async (userId, origin) => {
 
   console.log("[PASSKEY REGISTRATION] User found:", user.email);
   const challenge = await createChallenge("register", userId);
-  console.log("[PASSKEY REGISTRATION] Generated challenge (base64):", challenge);
+  console.log(
+    "[PASSKEY REGISTRATION] Generated challenge (base64):",
+    challenge,
+  );
 
   const rpId = getRpId(origin);
   console.log("[PASSKEY REGISTRATION] Dynamic RP_ID for origin:", rpId);
@@ -268,7 +274,10 @@ exports.beginPasskeyRegistration = async (userId, origin) => {
     },
   };
 
-  console.log("[PASSKEY REGISTRATION] Returning options:", JSON.stringify(options, null, 2));
+  console.log(
+    "[PASSKEY REGISTRATION] Returning options:",
+    JSON.stringify(options, null, 2),
+  );
   return options;
 };
 
@@ -284,7 +293,7 @@ exports.finishPasskeyRegistration = async (
   console.log("[PASSKEY FINISH REGISTRATION] Starting finish registration");
   console.log("[PASSKEY FINISH REGISTRATION] userId:", userId);
   console.log("[PASSKEY FINISH REGISTRATION] origin:", origin);
-  
+
   validateOrigin(origin);
 
   const user = await User.findById(userId);
@@ -300,22 +309,39 @@ exports.finishPasskeyRegistration = async (
     Buffer.from(clientDataJSON, "base64").toString("utf8"),
   );
   const challenge = clientData.challenge;
-  
-  console.log("[PASSKEY FINISH REGISTRATION] Client data challenge:", challenge);
-  console.log("[PASSKEY FINISH REGISTRATION] Client data type:", clientData.type);
-  console.log("[PASSKEY FINISH REGISTRATION] Client data origin:", clientData.origin);
+
+  console.log(
+    "[PASSKEY FINISH REGISTRATION] Client data challenge:",
+    challenge,
+  );
+  console.log(
+    "[PASSKEY FINISH REGISTRATION] Client data type:",
+    clientData.type,
+  );
+  console.log(
+    "[PASSKEY FINISH REGISTRATION] Client data origin:",
+    clientData.origin,
+  );
 
   const challengeDoc = await validateChallenge(challenge, "register", userId);
   console.log("[PASSKEY FINISH REGISTRATION] Challenge validated");
 
   // Verify client data
   if (clientData.type !== "webauthn.create") {
-    console.log("[PASSKEY FINISH REGISTRATION] Invalid client data type:", clientData.type);
+    console.log(
+      "[PASSKEY FINISH REGISTRATION] Invalid client data type:",
+      clientData.type,
+    );
     throw new ApiError("Invalid client data type", 400);
   }
 
   if (clientData.origin !== origin) {
-    console.log("[PASSKEY FINISH REGISTRATION] Origin mismatch:", clientData.origin, "vs", origin);
+    console.log(
+      "[PASSKEY FINISH REGISTRATION] Origin mismatch:",
+      clientData.origin,
+      "vs",
+      origin,
+    );
     throw new ApiError("Origin mismatch", 400);
   }
 
@@ -324,7 +350,10 @@ exports.finishPasskeyRegistration = async (
   // Extract credential data
   const { id, response } = credential;
   console.log("[PASSKEY FINISH REGISTRATION] Credential ID:", id);
-  console.log("[PASSKEY FINISH REGISTRATION] Response has attestationObject:", !!response.attestationObject);
+  console.log(
+    "[PASSKEY FINISH REGISTRATION] Response has attestationObject:",
+    !!response.attestationObject,
+  );
 
   // FIX: Extract the actual COSE public key from inside the attestationObject
   // Previously this stored the entire attestationObject which is wrong
@@ -332,7 +361,10 @@ exports.finishPasskeyRegistration = async (
   const attestation = cbor.decodeFirstSync(attestationBuffer);
   const authData = attestation.authData; // Raw Buffer
 
-  console.log("[PASSKEY FINISH REGISTRATION] Auth data length:", authData.length);
+  console.log(
+    "[PASSKEY FINISH REGISTRATION] Auth data length:",
+    authData.length,
+  );
 
   // authData binary layout:
   // [0-31]   rpIdHash          (32 bytes)
@@ -344,8 +376,14 @@ exports.finishPasskeyRegistration = async (
   const credentialIdLength = authData.readUInt16BE(53);
   const publicKeyBytes = authData.slice(55 + credentialIdLength); // ✅ real COSE public key
 
-  console.log("[PASSKEY FINISH REGISTRATION] Credential ID length:", credentialIdLength);
-  console.log("[PASSKEY FINISH REGISTRATION] Public key bytes length:", publicKeyBytes.length);
+  console.log(
+    "[PASSKEY FINISH REGISTRATION] Credential ID length:",
+    credentialIdLength,
+  );
+  console.log(
+    "[PASSKEY FINISH REGISTRATION] Public key bytes length:",
+    publicKeyBytes.length,
+  );
 
   // Read the counter from authData
   const counter = authData.readUInt32BE(33);
@@ -361,11 +399,17 @@ exports.finishPasskeyRegistration = async (
     aaguid: "00000000-0000-0000-0000-000000000000",
     label: `${user.name}'s Passkey`,
   };
-  
-  console.log("[PASSKEY FINISH REGISTRATION] Creating passkey with data:", JSON.stringify(passkeyData, null, 2));
-  
+
+  console.log(
+    "[PASSKEY FINISH REGISTRATION] Creating passkey with data:",
+    JSON.stringify(passkeyData, null, 2),
+  );
+
   const newPasskey = await Passkey.create(passkeyData);
-  console.log("[PASSKEY FINISH REGISTRATION] Passkey created successfully:", newPasskey._id);
+  console.log(
+    "[PASSKEY FINISH REGISTRATION] Passkey created successfully:",
+    newPasskey._id,
+  );
 
   // Mark challenge as used
   await markChallengeUsed(challengeDoc._id);
@@ -422,7 +466,7 @@ exports.beginPasskeyLogin = async (email, origin) => {
 exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
   console.log("[PASSKEY FINISH LOGIN] Starting finish login");
   console.log("[PASSKEY FINISH LOGIN] Origin:", origin);
-  
+
   validateOrigin(origin);
 
   // Decode base64 clientDataJSON before parsing
@@ -430,7 +474,7 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
     Buffer.from(clientDataJSON, "base64").toString("utf8"),
   );
   const challenge = clientData.challenge;
-  
+
   console.log("[PASSKEY FINISH LOGIN] Client data challenge:", challenge);
   console.log("[PASSKEY FINISH LOGIN] Client data type:", clientData.type);
   console.log("[PASSKEY FINISH LOGIN] Client data origin:", clientData.origin);
@@ -452,21 +496,32 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
 
   // Verify client data fields
   if (clientData.type !== "webauthn.get") {
-    console.log("[PASSKEY FINISH LOGIN] Invalid client data type:", clientData.type);
+    console.log(
+      "[PASSKEY FINISH LOGIN] Invalid client data type:",
+      clientData.type,
+    );
     throw new ApiError("Invalid client data type", 400);
   }
 
   if (clientData.origin !== origin) {
-    console.log("[PASSKEY FINISH LOGIN] Origin mismatch:", clientData.origin, "vs", origin);
+    console.log(
+      "[PASSKEY FINISH LOGIN] Origin mismatch:",
+      clientData.origin,
+      "vs",
+      origin,
+    );
     throw new ApiError("Origin mismatch", 400);
   }
 
   // Extract credential fields
   const { id, response } = credential;
   const { authenticatorData, signature } = response;
-  
+
   console.log("[PASSKEY FINISH LOGIN] Credential ID:", id);
-  console.log("[PASSKEY FINISH LOGIN] Has authenticatorData:", !!authenticatorData);
+  console.log(
+    "[PASSKEY FINISH LOGIN] Has authenticatorData:",
+    !!authenticatorData,
+  );
   console.log("[PASSKEY FINISH LOGIN] Has signature:", !!signature);
 
   // Find the stored passkey
@@ -476,7 +531,10 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
   });
 
   if (!passkey) {
-    console.log("[PASSKEY FINISH LOGIN] Passkey not found for credential ID:", id);
+    console.log(
+      "[PASSKEY FINISH LOGIN] Passkey not found for credential ID:",
+      id,
+    );
     throw new ApiError("Passkey not found", 400);
   }
 
@@ -500,8 +558,13 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
 
   // Check counter to prevent replay attacks
   const currentCounter = base64url.toBuffer(authenticatorData).readUInt32BE(33);
-  console.log("[PASSKEY FINISH LOGIN] Current counter:", currentCounter, "Stored counter:", passkey.counter);
-  
+  console.log(
+    "[PASSKEY FINISH LOGIN] Current counter:",
+    currentCounter,
+    "Stored counter:",
+    passkey.counter,
+  );
+
   if (currentCounter < passkey.counter) {
     console.log("[PASSKEY FINISH LOGIN] Counter replay attack detected");
     throw new ApiError("Counter replay attack detected", 400);
