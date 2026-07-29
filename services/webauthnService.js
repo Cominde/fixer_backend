@@ -228,20 +228,20 @@ exports.beginPasskeyRegistration = async (userId, origin) => {
   console.log("[PASSKEY REGISTRATION] Origin:", origin);
 
   validateOrigin(origin);
-  const id = userId?._id ?? userId;
+  const resolvedUserId = userId?._id ?? userId?.userId ?? userId;
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    console.log("[PASSKEY REGISTRATION] Invalid user ID format:", id);
+  if (!mongoose.Types.ObjectId.isValid(resolvedUserId)) {
+    console.log("[PASSKEY REGISTRATION] Invalid user ID format:", resolvedUserId);
     throw new ApiError("Invalid user ID format", 400);
   }
-  const user = await User.findById(userId);
+  const user = await User.findById(resolvedUserId);
   if (!user) {
-    console.log("[PASSKEY REGISTRATION] User not found:", userId);
+    console.log("[PASSKEY REGISTRATION] User not found:", resolvedUserId);
     throw new ApiError("User not found", 404);
   }
 
   console.log("[PASSKEY REGISTRATION] User found:", user.email);
-  const challenge = await createChallenge("register", userId);
+  const challenge = await createChallenge("register", resolvedUserId);
   console.log(
     "[PASSKEY REGISTRATION] Generated challenge (base64):",
     challenge,
@@ -296,9 +296,10 @@ exports.finishPasskeyRegistration = async (
 
   validateOrigin(origin);
 
-  const user = await User.findById(userId);
+  const resolvedUserId = userId?._id ?? userId?.userId ?? userId;
+  const user = await User.findById(resolvedUserId);
   if (!user) {
-    console.log("[PASSKEY FINISH REGISTRATION] User not found:", userId);
+    console.log("[PASSKEY FINISH REGISTRATION] User not found:", resolvedUserId);
     throw new ApiError("User not found", 404);
   }
 
@@ -323,7 +324,7 @@ exports.finishPasskeyRegistration = async (
     clientData.origin,
   );
 
-  const challengeDoc = await validateChallenge(challenge, "register", userId);
+  const challengeDoc = await validateChallenge(challenge, "register", resolvedUserId);
   console.log("[PASSKEY FINISH REGISTRATION] Challenge validated");
 
   // Verify client data
@@ -589,7 +590,7 @@ exports.finishPasskeyLogin = async (credential, origin, clientDataJSON) => {
   await markChallengeUsed(challengeDoc._id);
 
   // Generate JWT
-  const authToken = createToken({ userId: user._id });
+  const authToken = createToken(user._id);
 
   // Subscribe admin to notifications if they have FCM token
   if (user.fcmToken && user.role === "admin") {
