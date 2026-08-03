@@ -24,6 +24,13 @@ exports.saveFCMToken = asyncHandler(async (req, res, next) => {
   }
   user.fcmToken = fcmToken;
   await user.save({ validateBeforeSave: false });
+  
+  // Subscribe user to all_users topic
+  try {
+    await admin.messaging().subscribeToTopic(fcmToken, "all_users");
+  } catch (error) {
+    console.log("there is error to join all notification broadcast")
+  }
   res.json({ success: true, message: `FCM token saved successfully` });
 });
 
@@ -42,14 +49,11 @@ exports.sendRepairDoneNotification = async (carNumber) => {
     android: { priority: "high" },
     apns: { payload: { aps: { sound: "default" } } },
   });
-
-  console.log(`[FCM] Repair done notification sent to user: ${user._id}`);
 };
 
 // ─── 2. Car Needs Check (State = "Need to check") ─────────────────
 exports.sendNeedsCheckNotification = async (carNumber) => {
   const user = await findUserByCarNumber(carNumber);
-  console.log(user);
   if (!user?.fcmToken) return;
 
   await admin.messaging().send({
@@ -62,8 +66,6 @@ exports.sendNeedsCheckNotification = async (carNumber) => {
     android: { priority: "high" },
     apns: { payload: { aps: { sound: "default" } } },
   });
-
-  console.log(`[FCM] Needs check notification sent to user: ${user._id}`);
 };
 
 // @desc send notification to spacific user
@@ -140,15 +142,20 @@ exports.sendNotificationToAllUsers = asyncHandler(async (req, res, next) => {
   const { title, body } = req.body;
   if (!title || !body)
     return next(new apiError(`title and body are required`, 400));
-  await admin.messaging().send({
-    topic: "all_users",
-    notification: { title, body },
-    data: { type: "admin_broadcast" },
-    android: { priority: "high" },
-    apns: { payload: { aps: { sound: "default" } } },
-  });
+  
+  try {
+    await admin.messaging().send({
+      topic: "all_users",
+      notification: { title, body },
+      data: { type: "admin_broadcast" },
+      android: { priority: "high" },
+      apns: { payload: { aps: { sound: "default" } } },
+    });
 
-  res.json({ success: true, message: `Notification sent to all users` });
+    res.json({ success: true, message: `Notification sent to all users` });
+  } catch (error) {
+    return next(new apiError(`Failed to send notification: ${error.message}`, 500));
+  }
 });
 
 // @desc send notification admin for booking request
@@ -217,7 +224,6 @@ exports.notifyAdmins = async ({
       failureCount: response.failureCount,
     };
   } catch (error) {
-    console.error("Failed to notify admins:", error.message);
     return {
       success: false,
       message: "Failed to notify admins",

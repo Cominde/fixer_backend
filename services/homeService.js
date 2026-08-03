@@ -86,14 +86,12 @@ exports.getHomepram = asyncHandler(async (req, res, next) => {
   if (user?.fcmToken && car.State === "Need to check") {
     try {
       await sendNeedsCheckNotification(carNumber);
-      console.log(`✅ Notification sent for car: ${carNumber}`);
     } catch (err) {
       if (err.code === "messaging/registration-token-not-registered") {
         return next(
           new apiError("the FCM token of the user is not found", 400),
         );
       }
-      console.log(`❌ FCM error: ${err.message}`);
     }
   }
   const repairing = await Repairing.findById(car.repairing_id);
