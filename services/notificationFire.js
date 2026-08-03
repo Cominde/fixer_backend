@@ -10,7 +10,7 @@ const findUserByCarNumber = async (carNumber) => {
   return await User.findOne({ "car.carNumber": carNumber });
 };
 // @desc save fireBase token for user in the database
-// @Route put /api/v2/user/saveFCMToken/:userId
+// @Route put /api/v1/user/saveFCMToken/:userId
 // @access public
 exports.saveFCMToken = asyncHandler(async (req, res, next) => {
   const userId = req.params.userId;
