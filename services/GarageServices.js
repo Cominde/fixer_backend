@@ -308,6 +308,25 @@ exports.searchForallCars = asyncHandler(async (req, res, next) => {
   let { searchString } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
+
+  // First try to search by generatedCode (exact match)
+  const carByCode = await Car.findOne({ generatedCode: searchString });
+  
+  if (carByCode) {
+    // If found by generatedCode, return it
+    const documents = [carByCode];
+    const paginationResult = {
+      currentPage: page,
+      limit,
+      numberOfPages: 1,
+      totalDocuments: 1,
+    };
+    return res
+      .status(200)
+      .json({ results: documents.length, paginationResult, data: documents });
+  }
+
+  // If not found by generatedCode, search by carNumber
   const { documents, paginationResult } = await searchCarService({
     Model: Car,
     searchString,
