@@ -948,7 +948,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           }
         }
         await inventory.save();
-        await repairComponent.save();
+        repair.markModified('component');
       } else {
         const inventoryComponent = await Inventory.findById(componentId);
 
@@ -991,6 +991,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           quantity: quantity,
           price: componentPrice,
         });
+        repair.markModified('component');
       }
     }
     totalPrice = totalPrice + updateTotalPrice;
@@ -1032,7 +1033,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
             repairService.price = price;
           }
         }
-        await repairService.save();
+        repair.markModified('Services');
       } else {
         return next(
           new apiError(
@@ -1093,6 +1094,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
       repair.Services = repair.Services.concat(newServices);
       repair.complete = newComplete;
       repair.completedServicesRatio = completedServicesRatio;
+      repair.markModified('Services');
     }
 
     totalPrice = totalPrice + updateTotalPrice;
@@ -1135,7 +1137,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
               repairAddition.price = price;
             }
           }
-          await repairAddition.save();
+        repair.markModified('additions');
         } else {
           return next(
             new apiError(
@@ -1152,6 +1154,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           }
         }
         repair.additions = repair.additions.concat(newAdditions);
+        repair.markModified('additions');
       }
     }
     totalPrice = totalPrice + updateTotalPrice;
