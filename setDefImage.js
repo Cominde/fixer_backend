@@ -13,9 +13,9 @@ async function updateImages() {
     await mongoose.connect(process.env.DB_URL);
     console.log("✅ Connected to DB");
 
-    // 🔥 تحديث كل العربيات
+    // 🔥 تحديث العربيات اللي مش عندها صورة بس
     const result = await Car.updateMany(
-      {},
+      { $or: [{ image: { $exists: false } }, { image: null }, { image: "" }] },
       { $set: { image: DEFAULT_IMAGE, imagePublicId: "cars/def_img" } },
     );
 

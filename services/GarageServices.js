@@ -157,6 +157,8 @@ exports.addCar = asyncHandler(async (req, res, next) => {
     motorNumber,
     generatedCode: newCarCode,
     generatedPassword: user.password,
+    image: "https://res.cloudinary.com/dcj7fkdub/image/upload/v1777995080/def_ljjwcj.png",
+    imagePublicId: "cars/def_img"
   });
 
   if (!newCar) {
