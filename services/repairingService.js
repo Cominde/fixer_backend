@@ -648,12 +648,30 @@ exports.getRepairsReport = asyncHandler(async (req, res, next) => {
   const carInfo = await Car.findOne({ carNumber: { $in: Repair.carNumber } });
 
   if (!carInfo) {
+    const userInfo = await User.findOne({ name: { $in: Repair.client } });
+
+    if (!userInfo) {
     return next(
-      new apiError(
-        `Can't find services for this car ${carInfo.carNumber}`,
-        404,
-      ),
+      new apiError(`Can't car for this user ${carInfo.ownerName}`, 404),
     );
+    }
+     const info = {
+    name: Repair.client,
+    phone: userInfo.phoneNumber,
+    carNumber: Repair.carNumber,
+    chassisNumber: "None",
+    brand: Repair.brand,
+    color: Repair.color,
+    distances: Repair.distances,
+    model: Repair.model,
+    clientCode: "None",
+    note1: Repair.Note1,
+    note2: Repair.Note2,
+  };
+  res.status(200).json({
+    repair: Repair,
+    data: info,
+  });
   }
 
   const userInfo = await User.findOne({ name: { $in: carInfo.ownerName } });
