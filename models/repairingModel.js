@@ -116,6 +116,13 @@ const repairingSchema = new mongoose.Schema(
       type: String,
       required: false,
     },
+    carId: {
+      type: mongoose.Schema.ObjectId,
+      ref: "Car",
+    },
+    generatedCode: {
+      type: String,
+    },
   },
 
   // مفيده ليا لو عايز اجيب ال منتج الاحدث بالوقت

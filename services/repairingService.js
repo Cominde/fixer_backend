@@ -171,7 +171,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       nonperiodicRepairs += 1;
     }*/
 
-  const reCar = await Car.findOne({ carNumber: carNumber });
+  const reCar = await Car.findById(car._id);
   if (!reCar) {
     return next(new apiError(`No car for this number ${carNumber}`, 404));
   }
@@ -198,8 +198,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   if (completedServices === totalServicesCount) {
     complete = true;
     const lastRepairDate = new Date();
-    const car = await Car.findOneAndUpdate(
-      { carNumber: carNumber },
+    const car = await Car.findByIdAndUpdate(
+      car._id,
       {
         lastRepairDate: lastRepairDate,
         nextRepairDate: nextRepairDate,
@@ -226,8 +226,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   } else {
     state = "Need to check";
   }
-  const car_state = await Car.findOneAndUpdate(
-    { carNumber: carNumber },
+  const car_state = await Car.findByIdAndUpdate(
+    car._id,
     { State: state },
     { new: true },
   );
@@ -236,8 +236,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     return next(new apiError(`No car for this number ${carNumber}`, 404));
   }
   await car_state.save();
-  const car_ratio = await Car.findOneAndUpdate(
-    { carNumber: carNumber },
+  const car_ratio = await Car.findByIdAndUpdate(
+    car._id,
     { completedServicesRatio: completedServicesRatio, nextRepairDistance },
     { new: true },
   );
@@ -249,7 +249,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   const expectedDate = new Date();
   expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
 
-  const car = await Car.findOne({ carNumber });
+  const car = await Car.findById(car._id);
   const repair = await Repairing.create({
     client: car.ownerName,
     genId: newId,
@@ -272,10 +272,12 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     distance: finalDistance,
     nextRepairDistance,
     nextRepairDate: nextRepairDate,
+    carId: car._id,
+    generatedCode: car.generatedCode
   });
   if (!complete) {
-    const car = await Car.findOneAndUpdate(
-      { carNumber: carNumber },
+    const car = await Car.findByIdAndUpdate(
+      car._id,
       { repairing_id: repair._id, repairing: true },
       { new: true },
     );
@@ -464,7 +466,7 @@ exports.updateServiceStateById = asyncHandler(async (req, res, next) => {
   await repairingDoc.save();
 
   // Update car data if all services are completed
-  let car = await Car.findOne({ carNumber: repairingDoc.carNumber });
+  let car = await Car.findById(repairingDoc.carId);
 
   if (!car) {
     return next(
@@ -519,18 +521,18 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
   const { mongooseQuery, paginationResult } = apiFeatures;
   const repairs = await mongooseQuery;
 
-  const carNumbers = repairs.map((repair) => repair.carNumber);
+  const carIds = repairs.map((repair) => repair.carId);
 
-  const cars = await Car.find({ carNumber: { $in: carNumbers } });
+  const cars = await Car.find({ _id: { $in: carIds } });
 
   const carCodeMap = {};
   cars.forEach((car) => {
-    carCodeMap[car.carNumber] = car.generatedCode;
+    carCodeMap[car._id.toString()] = car.generatedCode;
   });
 
   let enrichedRepairs = repairs.map((repair) => {
-    const carCode = carCodeMap[repair.carNumber];
-    const car = cars.find((car) => car.carNumber === repair.carNumber);
+    const carCode = carCodeMap[repair.carId?.toString()];
+    const car = cars.find((car) => car._id.toString() === repair.carId?.toString());
     if (car) {
       return {
         brand: car.brand,
@@ -575,7 +577,7 @@ exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   }
 
   const repairing = await Repairing.find({
-    carNumber: { $in: car.carNumber },
+    carId: car._id,
   });
 
   if (!repairing || repairing.length === 0) {
@@ -606,10 +608,10 @@ exports.getCarRepairsByGenCode = asyncHandler(async (req, res, next) => {
 
   // Set up pagination and other features for car repairs
   const documentsCount = await Repairing.countDocuments({
-    carNumber: { $in: car.carNumber },
+    carId: { $in: car._id },
   });
   const apiFeatures = new ApiFeatures(
-    Repairing.find({ carNumber: { $in: car.carNumber } }),
+    Repairing.find({ carId: { $in:  car._id  } }),
     req.query,
   )
     .paginate(documentsCount)
@@ -645,40 +647,21 @@ exports.getRepairsReport = asyncHandler(async (req, res, next) => {
     return next(new apiError(`Can't find car with this id ${id}`, 404));
   }
 
-  const carInfo = await Car.findOne({ carNumber: { $in: Repair.carNumber } });
+  const carInfo = await Car.findById(Repair.carId);
 
   if (!carInfo) {
-    const userInfo = await User.findOne({ name: { $in: Repair.client } });
-
-    if (!userInfo) {
     return next(
-      new apiError(`Can't car for this user ${carInfo.ownerName}`, 404),
+      new apiError(`Can't find car with this id ${Repair.carId}`, 404),
     );
-    }
-     const info = {
-    name: Repair.client,
-    phone: userInfo.phoneNumber,
-    carNumber: Repair.carNumber,
-    chassisNumber: "None",
-    brand: Repair.brand,
-    color: Repair.color,
-    distances: Repair.distances,
-    model: Repair.model,
-    clientCode: "None",
-    note1: Repair.Note1,
-    note2: Repair.Note2,
-  };
-  res.status(200).json({
-    repair: Repair,
-    data: info,
-  });
+    
+
   }
 
   const userInfo = await User.findOne({ name: { $in: carInfo.ownerName } });
 
   if (!userInfo) {
     return next(
-      new apiError(`Can't car for this user ${carInfo.ownerName}`, 404),
+      new apiError(`Can't find car for this user ${carInfo.ownerName}`, 404),
     );
   }
 
@@ -986,8 +969,8 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
       state = "Good";
     }
 
-    const car_state = await Car.findOneAndUpdate(
-      { carNumber: repair.carNumber },
+    const car_state = await Car.findByIdAndUpdate(
+      repair.carId,
       { State: state },
       { new: true },
     );
@@ -1073,9 +1056,9 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
   if (req.body.type) {
     let periodicRepairs = 0;
     let nonperiodicRepairs = 0;
-    const reCar = await Car.findOne({ carNumber: repair.carNumber });
+    const reCar = await Car.findById(repair.carId);
     if (!reCar) {
-      return next(new apiError(`No car for this number ${carNumber}`, 404));
+      return next(new apiError(`No car for this repair`, 404));
     }
     periodicRepairs = reCar.periodicRepairs;
     nonperiodicRepairs = reCar.nonPeriodicRepairs;
@@ -1109,8 +1092,8 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
 
   if (req.body.nextRepairDate) {
     if (!repair.complete) {
-      await Car.findOneAndUpdate(
-        { carNumber: repair.carNumber },
+      await Car.findByIdAndUpdate(
+        repair.carId,
         {
           lastRepairDate: new Date(),
           nextRepairDate: req.body.nextRepairDate,
@@ -1123,8 +1106,8 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
 
   if (req.body.nextRepairDistance) {
     if (!repair.complete) {
-      await Car.findOneAndUpdate(
-        { carNumber: repair.carNumber },
+      await Car.findByIdAndUpdate(
+        repair.carId,
         { nextRepairDistance: req.body.nextRepairDistance },
         { new: true },
       );
@@ -1253,11 +1236,11 @@ exports.searchRepairs = asyncHandler(async (req, res, next) => {
             totalDocuments: repairs.length,
           };
         }
-        // 4. Try to find by generatedCode (find car first, then repairs)
+        // 4. Try to find by generatedCode (find car first, then repairs by carId)
         else {
           const car = await Car.findOne({ generatedCode: searchTerm });
           if (car) {
-            repairs = await Repairing.find({ carNumber: car.carNumber });
+            repairs = await Repairing.find({ carId: car._id });
             paginationResult = {
               currentPage: page,
               limit,
