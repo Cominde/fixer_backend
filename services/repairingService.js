@@ -8,6 +8,7 @@ const apiError = require("../utils/apiError");
 const ApiFeatures = require("../utils/apiFeatures");
 const asyncHandler = require("express-async-handler");
 const { body } = require("express-validator");
+const { searchService } = require("./searchService");
 
 // @desc create a repairing
 // @Route POST /api/v1/repairing
@@ -36,6 +37,21 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     distance,
     nextRepairDistance,
   } = req.body;
+
+  // For non-periodic repairs, get distance from last periodic repair if not provided
+  let finalDistance = distance;
+  if (type === "nonPeriodic" && (distance === undefined || distance === null || distance === 0)) {
+    const lastPeriodicRepair = await Repairing.findOne({
+      carNumber: carNumber,
+      type: "periodic"
+    }).sort({ createdAt: -1 });
+    
+    if (lastPeriodicRepair && lastPeriodicRepair.distance) {
+      finalDistance = lastPeriodicRepair.distance;
+    } else {
+      finalDistance = 0;
+    }
+  }
   if (req.body.manually == "True" || req.body.manually == true) {
     const id = req.body.id;
     const parsedCarCode = parseInt(id, 10);
@@ -174,7 +190,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   }
   reCar.periodicRepairs = periodicRepairs;
   reCar.nonPeriodicRepairs = nonperiodicRepairs;
-  reCar.distances = distance;
+  reCar.distances = finalDistance;
 
   reCar.save();
   const currentDate = new Date();
@@ -253,7 +269,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     completedServicesRatio,
     Note1,
     Note2,
-    distance,
+    distance: finalDistance,
     nextRepairDistance,
     nextRepairDate: nextRepairDate,
   });
@@ -1168,4 +1184,70 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
   console.log(`Repair document with ID ${id} successfully deleted.`);
 
   res.status(200).json({ message: "deleted successfully" });
+});
+
+// @desc Search repairs by genId, client name, carNumber, or generatedCode
+// @Route GET /api/v1/repairing/search/:searchTerm
+// @access private
+exports.searchRepairs = asyncHandler(async (req, res, next) => {
+  const { searchTerm } = req.params;
+  const page = req.query.page || 1;
+  const limit = req.query.limit || 10;
+
+  try {
+    let repairs = [];
+
+    // 1. Try to find by genId (exact match)
+    const repairByGenId = await Repairing.findOne({ genId: searchTerm });
+    if (repairByGenId) {
+      repairs = await Repairing.find({ genId: searchTerm });
+    }
+    // 2. Try to find by client name using searchService (case-insensitive partial match)
+    else {
+      const { documents: repairsByClient } = await searchService({
+        Model: Repairing,
+        searchString: searchTerm,
+        searchFields: ["client"],
+        page,
+        limit,
+        sort: { createdAt: -1 },
+      });
+      if (repairsByClient.length > 0) {
+        repairs = repairsByClient;
+      }
+      // 3. Try to find by carNumber (exact match)
+      else {
+        const repairsByCarNumber = await Repairing.find({ carNumber: searchTerm });
+        if (repairsByCarNumber.length > 0) {
+          repairs = repairsByCarNumber;
+        }
+        // 4. Try to find by generatedCode (find car first, then repairs)
+        else {
+          const car = await Car.findOne({ generatedCode: searchTerm });
+          if (car) {
+            repairs = await Repairing.find({ carNumber: car.carNumber });
+          }
+        }
+      }
+    }
+
+    if (!repairs || repairs.length === 0) {
+      return next(
+        new apiError(`No repairs found for search term: ${searchTerm}`, 404)
+      );
+    }
+
+    // Sort by creation date (newest first)
+    repairs = repairs.sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    res.status(200).json({
+      results: repairs.length,
+      data: repairs,
+    });
+  } catch (error) {
+    console.error("Error:", error);
+    next(new apiError("Internal Server Error", 500));
+  }
 });

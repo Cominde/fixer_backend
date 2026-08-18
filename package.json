@@ -223,7 +223,10 @@
   "scripts": {
     "start:dev": "nodemon server.js",
     "start:prod": "cross-env NODE_ENV=production node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "backup": "node scripts/backupDatabase.js",
+    "restore": "node scripts/restoreDatabase.js",
+    "backup:scheduler": "node scripts/backupScheduler.js"
   },
   "keywords": [],
   "author": "",

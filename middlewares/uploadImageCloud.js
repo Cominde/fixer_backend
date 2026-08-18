@@ -175,15 +175,10 @@ exports.updateCarImage = async (req, res, next) => {
         resource_type: "image",
       });
 
-      // Image already exists — save it to the car and return it
-      car.image = existing.secure_url;
-      car.imagePublicId = existing.public_id;
-      await car.save({ validateBeforeSave: false });
-
-      return res.status(200).json({
-        message: "Image already exists, returning existing image",
-        image: existing.secure_url,
-      });
+      // Image already exists — set it to req.body for updateCar middleware
+      req.body.image = existing.secure_url;
+      req.body.imagePublicId = existing.public_id;
+      return next();
     } catch (err) {
       // 404 means no existing image — continue to upload
       if (err.error?.http_code !== 404) {
@@ -213,15 +208,10 @@ exports.updateCarImage = async (req, res, next) => {
       stream.end(req.file.buffer);
     });
 
-    // 5. Save new image to car schema
-    car.image = result.secure_url;
-    car.imagePublicId = result.public_id;
-    await car.save({ validateBeforeSave: false });
-
-    res.status(200).json({
-      message: "Car image updated successfully",
-      image: result.secure_url,
-    });
+    // 5. Set image to req.body for updateCar middleware
+    req.body.image = result.secure_url;
+    req.body.imagePublicId = result.public_id;
+    next();
   } catch (err) {
     next(new ApiError(`Error updating car image: ${err.message}`, 500));
   }

@@ -12,6 +12,7 @@ const {
   suggestNextCodeNumber,
   updateRepair,
   deleteRepair,
+  searchRepairs,
 } = require("../services/repairingService");
 
 /**
@@ -353,5 +354,40 @@ router.route("/:carNumber").get(getCarRepairsByNumber);
  *         description: Service not found
  */
 router.route("/:serviceId").put(updateServiceStateById);
+
+/**
+ * @swagger
+ * /repairing/search/{searchTerm}:
+ *   get:
+ *     summary: Search repairs by genId, client name, carNumber, or generatedCode
+ *     tags: [Repairing]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: searchTerm
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "20211"
+ *     responses:
+ *       200:
+ *         description: Matching repairs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 results:
+ *                   type: integer
+ *                   example: 5
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       404:
+ *         description: No repairs found
+ */
+router.route("/search/:searchTerm").get(searchRepairs);
 
 module.exports = router;
