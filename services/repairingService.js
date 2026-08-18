@@ -171,7 +171,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       nonperiodicRepairs += 1;
     }*/
 
-  const reCar = await Car.findById(car._id);
+  const reCar = await Car.findOne({ carNumber: carNumber });
   if (!reCar) {
     return next(new apiError(`No car for this number ${carNumber}`, 404));
   }
@@ -198,8 +198,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   if (completedServices === totalServicesCount) {
     complete = true;
     const lastRepairDate = new Date();
-    const car = await Car.findByIdAndUpdate(
-      car._id,
+    const car = await Car.findOneAndUpdate(
+      { carNumber: carNumber },
       {
         lastRepairDate: lastRepairDate,
         nextRepairDate: nextRepairDate,
@@ -226,8 +226,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   } else {
     state = "Need to check";
   }
-  const car_state = await Car.findByIdAndUpdate(
-    car._id,
+  const car_state = await Car.findOneAndUpdate(
+    { carNumber: carNumber },
     { State: state },
     { new: true },
   );
@@ -236,8 +236,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     return next(new apiError(`No car for this number ${carNumber}`, 404));
   }
   await car_state.save();
-  const car_ratio = await Car.findByIdAndUpdate(
-    car._id,
+  const car_ratio = await Car.findOneAndUpdate(
+    { carNumber: carNumber },
     { completedServicesRatio: completedServicesRatio, nextRepairDistance },
     { new: true },
   );
@@ -249,7 +249,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   const expectedDate = new Date();
   expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
 
-  const car = await Car.findById(car._id);
+  const car = await Car.findOne({ carNumber });
   const repair = await Repairing.create({
     client: car.ownerName,
     genId: newId,
