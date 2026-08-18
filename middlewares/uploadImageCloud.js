@@ -169,13 +169,28 @@ exports.updateCarImage = async (req, res, next) => {
 
     const expectedPublicId = `Cars/${fileName}`;
 
-    // 3. Delete existing image if it exists on Cloudinary
+    // 3. Check if an image with the same path already exists on Cloudinary
     try {
-      await cloudinary.uploader.destroy(expectedPublicId, { resource_type: "image" });
-      console.log(`🗑️ Old image deleted: ${expectedPublicId}`);
+      const existing = await cloudinary.api.resource(expectedPublicId, {
+        resource_type: "image",
+      });
+
+      // Image already exists — save it to the car and return it
+      car.image = existing.secure_url;
+      car.imagePublicId = existing.public_id;
+      await car.save({ validateBeforeSave: false });
+
+      return res.status(200).json({
+        message: "Image already exists, returning existing image",
+        image: existing.secure_url,
+      });
     } catch (err) {
-      // Image didn't exist — no problem, continue
-      console.log(`ℹ️ No existing image to delete: ${expectedPublicId}`);
+      // 404 means no existing image — continue to upload
+      if (err.error?.http_code !== 404) {
+        return next(
+          new ApiError(`Error checking Cloudinary: ${err.message}`, 500),
+        );
+      }
     }
 
     // 4. Upload new image to Cloudinary
@@ -198,10 +213,15 @@ exports.updateCarImage = async (req, res, next) => {
       stream.end(req.file.buffer);
     });
 
-    // 5. Set image to req.body for updateCar middleware
-    req.body.image = result.secure_url;
-    req.body.imagePublicId = result.public_id;
-    next();
+    // 5. Save new image to car schema
+    car.image = result.secure_url;
+    car.imagePublicId = result.public_id;
+    await car.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+      message: "Car image updated successfully",
+      image: result.secure_url,
+    });
   } catch (err) {
     next(new ApiError(`Error updating car image: ${err.message}`, 500));
   }
