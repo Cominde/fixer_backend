@@ -276,8 +276,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     generatedCode: car.generatedCode
   });
   if (!complete) {
-    const car = await Car.findByIdAndUpdate(
-      car._id,
+    const car = await Car.findOneAndUpdate(
+      { carNumber: carNumber },
       { repairing_id: repair._id, repairing: true },
       { new: true },
     );
