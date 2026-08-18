@@ -298,8 +298,10 @@ exports.updateCar = [
     if (req.body.carNumber) {
       req.body.carNumber = normalizeCarNumber(req.body.carNumber);
     }
+    console.log(req.body)
     next();
   },
+  
   factory.updateOne(Car),
 ];
 
@@ -328,7 +330,25 @@ exports.searchForallCars = asyncHandler(async (req, res, next) => {
       .json({ results: documents.length, paginationResult, data: documents });
   }
 
-  // If not found by generatedCode, search by carNumber
+  // Try to search by owner name (case-insensitive partial match)
+  const carsByOwner = await Car.find({ 
+    ownerName: { $regex: searchString, $options: 'i' } 
+  });
+  
+  if (carsByOwner.length > 0) {
+    const documents = carsByOwner;
+    const paginationResult = {
+      currentPage: page,
+      limit,
+      numberOfPages: Math.ceil(documents.length / limit),
+      totalDocuments: documents.length,
+    };
+    return res
+      .status(200)
+      .json({ results: documents.length, paginationResult, data: documents });
+  }
+
+  // If not found by generatedCode or owner name, search by carNumber
   const { documents, paginationResult } = await searchCarService({
     Model: Car,
     searchString,

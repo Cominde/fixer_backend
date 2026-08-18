@@ -108,7 +108,7 @@ exports.processCarImage = async (req, res, next) => {
           format: "png",
           transformation: [
             { effect: "trim:10" },
-            { width: 500, height: 500, crop: "pad", background: "transparent" },
+            { width: 1920, height: 1080, crop: "fill", gravity: "center"},
             ,
           ],
         },
@@ -168,29 +168,14 @@ exports.updateCarImage = async (req, res, next) => {
       .replace(/\s+/g, "_");
 
     const expectedPublicId = `Cars/${fileName}`;
-
-    // 3. Check if an image with the same path already exists on Cloudinary
+    const bgRemovedBuffer = await removeBgExternal(req.file.buffer);
+    // 3. Delete existing image if it exists on Cloudinary
     try {
-      const existing = await cloudinary.api.resource(expectedPublicId, {
-        resource_type: "image",
-      });
-
-      // Image already exists — save it to the car and return it
-      car.image = existing.secure_url;
-      car.imagePublicId = existing.public_id;
-      await car.save({ validateBeforeSave: false });
-
-      return res.status(200).json({
-        message: "Image already exists, returning existing image",
-        image: existing.secure_url,
-      });
+      await cloudinary.uploader.destroy(expectedPublicId, { resource_type: "image" });
+      console.log(`🗑️ Old image deleted: ${expectedPublicId}`);
     } catch (err) {
-      // 404 means no existing image — continue to upload
-      if (err.error?.http_code !== 404) {
-        return next(
-          new ApiError(`Error checking Cloudinary: ${err.message}`, 500),
-        );
-      }
+      // Image didn't exist — no problem, continue
+      console.log(`ℹ️ No existing image to delete: ${expectedPublicId}`);
     }
 
     // 4. Upload new image to Cloudinary
@@ -202,7 +187,7 @@ exports.updateCarImage = async (req, res, next) => {
           resource_type: "image",
           format: "png",
           transformation: [
-            { width: 500, height: 500, crop: "fill", gravity: "auto" },
+            { width: 1920, height: 1080, crop: "fill", gravity: "center" },
           ],
         },
         (err, uploadResult) => {
@@ -210,18 +195,13 @@ exports.updateCarImage = async (req, res, next) => {
           resolve(uploadResult);
         },
       );
-      stream.end(req.file.buffer);
+      stream.end(bgRemovedBuffer);
     });
 
-    // 5. Save new image to car schema
-    car.image = result.secure_url;
-    car.imagePublicId = result.public_id;
-    await car.save({ validateBeforeSave: false });
-
-    res.status(200).json({
-      message: "Car image updated successfully",
-      image: result.secure_url,
-    });
+    // 5. Set image to req.body for updateCar middleware
+    req.body.image = result.secure_url;
+    req.body.imagePublicId = result.public_id;
+    next();
   } catch (err) {
     next(new ApiError(`Error updating car image: ${err.message}`, 500));
   }
