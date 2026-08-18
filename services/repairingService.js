@@ -1191,20 +1191,27 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
 // @access private
 exports.searchRepairs = asyncHandler(async (req, res, next) => {
   const { searchTerm } = req.params;
-  const page = req.query.page || 1;
-  const limit = req.query.limit || 10;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
 
   try {
     let repairs = [];
+    let paginationResult;
 
     // 1. Try to find by genId (exact match)
     const repairByGenId = await Repairing.findOne({ genId: searchTerm });
     if (repairByGenId) {
       repairs = await Repairing.find({ genId: searchTerm });
+      paginationResult = {
+        currentPage: page,
+        limit,
+        numberOfPages: Math.ceil(repairs.length / limit),
+        totalDocuments: repairs.length,
+      };
     }
     // 2. Try to find by client name using searchService (case-insensitive partial match)
     else {
-      const { documents: repairsByClient } = await searchService({
+      const { documents: repairsByClient, paginationResult: clientPagination } = await searchService({
         Model: Repairing,
         searchString: searchTerm,
         searchFields: ["client"],
@@ -1214,18 +1221,31 @@ exports.searchRepairs = asyncHandler(async (req, res, next) => {
       });
       if (repairsByClient.length > 0) {
         repairs = repairsByClient;
+        paginationResult = clientPagination;
       }
       // 3. Try to find by carNumber (exact match)
       else {
         const repairsByCarNumber = await Repairing.find({ carNumber: searchTerm });
         if (repairsByCarNumber.length > 0) {
           repairs = repairsByCarNumber;
+          paginationResult = {
+            currentPage: page,
+            limit,
+            numberOfPages: Math.ceil(repairs.length / limit),
+            totalDocuments: repairs.length,
+          };
         }
         // 4. Try to find by generatedCode (find car first, then repairs)
         else {
           const car = await Car.findOne({ generatedCode: searchTerm });
           if (car) {
             repairs = await Repairing.find({ carNumber: car.carNumber });
+            paginationResult = {
+              currentPage: page,
+              limit,
+              numberOfPages: Math.ceil(repairs.length / limit),
+              totalDocuments: repairs.length,
+            };
           }
         }
       }
@@ -1244,6 +1264,7 @@ exports.searchRepairs = asyncHandler(async (req, res, next) => {
 
     res.status(200).json({
       results: repairs.length,
+      paginationResult,
       data: repairs,
     });
   } catch (error) {

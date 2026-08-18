@@ -169,23 +169,13 @@ exports.updateCarImage = async (req, res, next) => {
 
     const expectedPublicId = `Cars/${fileName}`;
 
-    // 3. Check if an image with the same path already exists on Cloudinary
+    // 3. Delete existing image if it exists on Cloudinary
     try {
-      const existing = await cloudinary.api.resource(expectedPublicId, {
-        resource_type: "image",
-      });
-
-      // Image already exists — set it to req.body for updateCar middleware
-      req.body.image = existing.secure_url;
-      req.body.imagePublicId = existing.public_id;
-      return next();
+      await cloudinary.uploader.destroy(expectedPublicId, { resource_type: "image" });
+      console.log(`🗑️ Old image deleted: ${expectedPublicId}`);
     } catch (err) {
-      // 404 means no existing image — continue to upload
-      if (err.error?.http_code !== 404) {
-        return next(
-          new ApiError(`Error checking Cloudinary: ${err.message}`, 500),
-        );
-      }
+      // Image didn't exist — no problem, continue
+      console.log(`ℹ️ No existing image to delete: ${expectedPublicId}`);
     }
 
     // 4. Upload new image to Cloudinary
