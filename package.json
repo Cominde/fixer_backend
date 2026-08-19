@@ -152,6 +152,7 @@
     "on-finished": "^2.4.1",
     "on-headers": "^1.0.2",
     "once": "^1.4.0",
+    "openai": "^6.44.0",
     "otp-generator": "^4.0.1",
     "p-limit": "^3.1.0",
     "p-locate": "^5.0.0",

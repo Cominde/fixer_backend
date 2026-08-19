@@ -2,13 +2,16 @@ const Inventory = require("../models/Inventory");
 const Repairing = require("../models/repairingModel");
 const Car = require("../models/Car");
 const User = require("../models/userModel");
+const Worker = require("../models/Worker");
 //const slugify = require("slugify");
 const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
 const ApiFeatures = require("../utils/apiFeatures");
+const { searchService, searchCarService } = require("./searchService");
+const { normalizeCarNumber } = require("../utils/carNumberCheck");
+const { sendLowQuantityNotification } = require("./notificationFire");
 const asyncHandler = require("express-async-handler");
 const { body } = require("express-validator");
-const { searchService } = require("./searchService");
 
 // @desc create a repairing
 // @Route POST /api/v1/repairing
@@ -36,6 +39,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     Note2,
     distance,
     nextRepairDistance,
+    technicians,
   } = req.body;
 
   // For non-periodic repairs, get distance from last periodic repair if not provided
@@ -156,6 +160,15 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
 
     await inventoryComponent.save();
 
+    // Check if quantity is low and send notification to admin
+    if (inventoryComponent.quantity < 5) {
+      try {
+        await sendLowQuantityNotification(inventoryComponent.name, inventoryComponent.quantity);
+      } catch (error) {
+        console.error('Failed to send low quantity notification:', error);
+      }
+    }
+
     const componentPrice = inventoryComponent.price * quantity;
     totalPrice += componentPrice;
 
@@ -273,8 +286,20 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     nextRepairDistance,
     nextRepairDate: nextRepairDate,
     carId: car._id,
-    generatedCode: car.generatedCode
+    generatedCode: car.generatedCode,
+    technicians: technicians || [],
   });
+
+  // Increment numberOfRepairs for each technician
+  if (technicians && technicians.length > 0) {
+    for (const technician of technicians) {
+      const worker = await Worker.findById(technician.workerId);
+      if (worker) {
+        worker.numberOfRepairs += 1;
+        await worker.save();
+      }
+    }
+  }
   if (!complete) {
     const car = await Car.findOneAndUpdate(
       { carNumber: carNumber },
@@ -288,6 +313,211 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     await car.save();
   }
   res.status(200).json();
+});
+
+// @desc    Create walk-in repair (without car/user in system)
+// @route   POST /api/v1/repairing/walkIn
+// @access  Private
+exports.walkInRepair = asyncHandler(async (req, res, next) => {
+  let totalPrice = 0;
+  let totalServicesCount = 0;
+  let completedServices = 0;
+  let complete = false;
+  let newId = 0;
+  const const_part_of_id = "2021";
+  const {
+    components,
+    services,
+    additions,
+    clientName,
+    carNumber,
+    brand,
+    category,
+    model,
+    type,
+    discount,
+    daysItTake,
+    Note1,
+    Note2,
+    distance,
+    technicians,
+  } = req.body;
+
+  // Validate required fields
+  if (!clientName || !carNumber || !brand || !category || !model) {
+    return next(
+      new apiError(
+        "clientName, carNumber, brand, category, and model are required for walk-in repair",
+        400,
+      ),
+    );
+  }
+
+  // Generate genId (same logic as createRepairing)
+  if (req.body.manually == "True" || req.body.manually == true) {
+    const id = req.body.id;
+    const parsedCarCode = parseInt(id, 10);
+
+    if (isNaN(parsedCarCode) || !Number.isInteger(parsedCarCode)) {
+      return next(new apiError(`Invalid carCode. It must be a number.`, 400));
+    }
+
+    newId = const_part_of_id + parsedCarCode;
+    const exRepair = await Repairing.findOne({ genId: newId });
+    if (exRepair) {
+      return next(
+        new apiError(`Repairing with id ${newId} already exists.`, 400),
+      );
+    }
+  } else {
+    const regex = new RegExp("^" + const_part_of_id + "\\d+$", "i");
+
+    const repairs = await Repairing.aggregate([
+      { $match: { genId: regex } },
+      {
+        $project: {
+          numericCode: {
+            $toInt: {
+              $substr: [
+                "$genId",
+                { $strLenCP: const_part_of_id },
+                {
+                  $subtract: [
+                    { $strLenCP: "$genId" },
+                    { $strLenCP: const_part_of_id },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    const validCodes = repairs
+      .map((repair) => repair.numericCode)
+      .filter((num) => !isNaN(num) && num > 0)
+      .sort((a, b) => a - b);
+
+    if (validCodes.length > 0) {
+      for (let i = 0; i < validCodes.length; i++) {
+        if (validCodes[i] !== i + 1) {
+          newId = const_part_of_id + (i + 1);
+          break;
+        }
+      }
+      if (!newId) {
+        newId = const_part_of_id + (validCodes.length + 1);
+      }
+    } else {
+      newId = const_part_of_id + "1";
+    }
+  }
+
+  if (!components || !services || !additions) {
+    return next(
+      new apiError(
+        "Components, services, and additions arrays are required",
+        400,
+      ),
+    );
+  }
+
+  const repairDetails = [];
+
+  for (const { price, state } of services) {
+    totalPrice += price;
+    totalServicesCount++;
+    if (state === "completed") {
+      completedServices++;
+    }
+  }
+
+  for (const { price } of additions) {
+    totalPrice += price;
+  }
+
+  for (const { id, quantity } of components) {
+    const inventoryComponent = await Inventory.findById(id);
+
+    if (!inventoryComponent) {
+      return next(
+        new apiError(`Component with ID ${id} not found in inventory`, 404),
+      );
+    }
+    if (
+      inventoryComponent.quantity < quantity ||
+      inventoryComponent.quantity < 0
+    ) {
+      return next(
+        new apiError(`Not enough quantity for component with id ${id}`, 400),
+      );
+    }
+    inventoryComponent.quantity -= quantity;
+    await inventoryComponent.save();
+
+    // Check if quantity is low and send notification to admin
+    if (inventoryComponent.quantity < 5) {
+      try {
+        await sendLowQuantityNotification(inventoryComponent.name, inventoryComponent.quantity);
+      } catch (error) {
+        console.error('Failed to send low quantity notification:', error);
+      }
+    }
+
+    const componentPrice = inventoryComponent.price * quantity;
+    totalPrice += componentPrice;
+
+    repairDetails.push({
+      name: inventoryComponent.name,
+      quantity: quantity,
+      price: componentPrice,
+    });
+  }
+
+  const completedServicesRatio =
+    totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
+  const priceAfterDiscount = totalPrice - discount;
+
+  const expectedDate = new Date();
+  expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+
+  // Create walk-in repair without car reference
+  const repair = await Repairing.create({
+    client: clientName,
+    genId: newId,
+    brand: brand,
+    category: category,
+    model: model,
+    component: repairDetails,
+    Services: services,
+    additions,
+    carNumber: carNumber,
+    type: type || "periodic",
+    totalPrice,
+    discount,
+    priceAfterDiscount,
+    expectedDate,
+    complete,
+    completedServicesRatio,
+    Note1,
+    Note2,
+    distance: distance || 0,
+    technicians: technicians || [],
+  });
+
+  // Increment numberOfRepairs for each technician
+  if (technicians && technicians.length > 0) {
+    for (const technician of technicians) {
+      const worker = await Worker.findById(technician.workerId);
+      if (worker) {
+        worker.numberOfRepairs += 1;
+        await worker.save();
+      }
+    }
+  }
+
+  res.status(201).json({ data: repair });
 });
 
 // @desc Update inventory and save services
@@ -545,17 +775,18 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
         id: repair._id,
       };
     } else {
-      return next(
-        new apiError(
-          `there is an error in car informations of this car number ${repair.carNumber}`,
-          400,
-        ),
-      );
+      // Skip repairs without matching car instead of throwing error
+      return null;
     }
-  });
+  }).filter(item => item !== null); // Filter out null entries
   enrichedRepairs = enrichedRepairs.sort(
     (a, b) => new Date(b.paidOn) - new Date(a.paidOn),
   );
+
+  // Add next page to paginationResult
+  paginationResult.next = paginationResult.currentPage < paginationResult.numberOfPages
+    ? paginationResult.currentPage + 1
+    : null;
 
   res.status(200).json({
     results: enrichedRepairs.length,
@@ -564,24 +795,22 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc Search for car services by owner Name
-// @Route GET /api/v1/repairing/owner/:ownerName
+// @desc Search for car services by car id
+// @Route GET /api/v1/repairing/getById/:id
 // @access private
 exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-
   const car = await Car.findById(id);
 
   if (!car || car.length === 0) {
-    return next(new apiError(`Can't find services for this owner ${id}`, 404));
+    return next(new apiError(`Can't car with this id ${id}`, 404));
   }
 
   const repairing = await Repairing.find({
     carId: car._id,
   });
-
   if (!repairing || repairing.length === 0) {
-    return next(new apiError(`Can't find services for this owner ${id}`, 404));
+    return next(new apiError(`Can't find services for this car  ${id}`, 404));
   }
   sortedRepairs = repairing.sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
@@ -626,6 +855,11 @@ exports.getCarRepairsByGenCode = asyncHandler(async (req, res, next) => {
   repairs = repairs.sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
   );
+
+  // Add next page to paginationResult
+  paginationResult.next = paginationResult.currentPage < paginationResult.numberOfPages
+    ? paginationResult.currentPage + 1
+    : null;
 
   // Respond with paginated repair data
   res.status(200).json({
@@ -878,6 +1112,15 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
 
         inventoryComponent.quantity -= quantity;
         await inventoryComponent.save();
+
+        // Check if quantity is low and send notification to admin
+        if (inventoryComponent.quantity < 5) {
+          try {
+            await sendLowQuantityNotification(inventoryComponent.name, inventoryComponent.quantity);
+          } catch (error) {
+            console.error('Failed to send low quantity notification:', error);
+          }
+        }
 
         const componentPrice = inventoryComponent.price * quantity;
         updateTotalPrice += componentPrice;
@@ -1262,6 +1505,11 @@ exports.searchRepairs = asyncHandler(async (req, res, next) => {
     repairs = repairs.sort(
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
     );
+
+    // Add next page to paginationResult
+    paginationResult.next = paginationResult.currentPage < paginationResult.numberOfPages
+      ? paginationResult.currentPage + 1
+      : null;
 
     res.status(200).json({
       results: repairs.length,

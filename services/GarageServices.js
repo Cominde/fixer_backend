@@ -13,6 +13,7 @@ const CategoryCode = require("../models/categoryCode");
 const { searchService, searchCarService } = require("./searchService");
 const { normalizeCarNumber } = require("../utils/carNumberCheck");
 const { removeBgExternal } = require("../utils/backgroundRemover");
+const openai = require('openai');
 
 // @desc    Add car
 // @route   POST /api/v1/Garage/:id
@@ -322,6 +323,7 @@ exports.searchForallCars = asyncHandler(async (req, res, next) => {
       limit,
       numberOfPages: 1,
       totalDocuments: 1,
+      next: null,
     };
     return res
       .status(200)
@@ -329,17 +331,19 @@ exports.searchForallCars = asyncHandler(async (req, res, next) => {
   }
 
   // Try to search by owner name (case-insensitive partial match)
-  const carsByOwner = await Car.find({ 
-    ownerName: { $regex: searchString, $options: 'i' } 
+  const carsByOwner = await Car.find({
+    ownerName: { $regex: searchString, $options: 'i' }
   });
-  
+
   if (carsByOwner.length > 0) {
     const documents = carsByOwner;
+    const numberOfPages = Math.ceil(documents.length / limit);
     const paginationResult = {
       currentPage: page,
       limit,
-      numberOfPages: Math.ceil(documents.length / limit),
+      numberOfPages,
       totalDocuments: documents.length,
+      next: page < numberOfPages ? page + 1 : null,
     };
     return res
       .status(200)
@@ -353,6 +357,11 @@ exports.searchForallCars = asyncHandler(async (req, res, next) => {
     page,
     limit,
   });
+
+  // Add next page to paginationResult
+  paginationResult.next = paginationResult.currentPage < paginationResult.numberOfPages
+    ? paginationResult.currentPage + 1
+    : null;
 
   if (!documents.length)
     return next(new apiError(`No car found for "${searchString}"`, 404));
@@ -382,6 +391,11 @@ exports.searchForRepairingCars = asyncHandler(async (req, res, next) => {
     return next(
       new apiError(`No repairing car found for "${searchString}"`, 404),
     );
+
+  // Add next page to paginationResult
+  paginationResult.next = paginationResult.currentPage < paginationResult.numberOfPages
+    ? paginationResult.currentPage + 1
+    : null;
 
   res
     .status(200)
@@ -471,27 +485,28 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 exports.setCarImg = asyncHandler(async (req, res, next) => {
-  const { method, brand, model, category, color, back } = req.body;
+  const { brand, model, category, color, back } = req.body;
 
-  if (!method || !brand || !model || !category || !color) {
+  if ( !brand || !model || !category || !color) {
     return next(
       new apiError(
-        "method, brand, model, category and color are required",
+        " brand, model, category and color are required",
         400,
       ),
     );
   }
 
   const car = await Car.findOne({ brand, model, category });
+  
   if (!car) {
     return next(
       new apiError(
-        `Can't find car with brand: ${brand}, model: ${model}, category: ${category}`,
+        `Can't find car with brand: ${brand}, category: ${category} ,  model: ${model}`,
         404,
       ),
     );
   }
-  const user = await User.findOne({ name: car.ownerName });
+  const user = await User.findOne({ "car.id": car._id });
   if (!user) {
     return next(
       new apiError(`Can't find user for car with id ${car._id}`, 404),
@@ -500,42 +515,77 @@ exports.setCarImg = asyncHandler(async (req, res, next) => {
 
   let result;
 
-  if (method === "generate") {
-    const imageUrl = new URL("https://cdn.imagin.studio/getimage");
-    Object.entries({
-      customer: "img",
-      make: brand,
-      modelFamily: category,
-      modelYear: model,
-      modelVariant: back || "sedan",
-      paintId: `color-${color}`,
-      paintDescription: color,
-      countryCode: "EGY",
-      zoomType: "fullscreen",
-      angle: "28",
-      fileType: "png",
-    }).forEach(([k, v]) => imageUrl.searchParams.append(k, v));
+  
+    let imageBuffer;
+    let useFallback = false;
 
-    const response = await axios.get(imageUrl.toString(), {
-      responseType: "arraybuffer",
-      headers: { Referer: "https://www.imagin.studio" },
-    });
+    try {
+      const imageUrl = new URL("https://cdn.imagin.studio/getimage");
+      Object.entries({
+        customer: "img",
+        make: brand,
+        modelFamily: category,
+        modelYear: model,
+        modelVariant: back || "sedan",
+        paintId: `color-${color}`,
+        paintDescription: color,
+        countryCode: "EGY",
+        zoomType: "fullscreen",
+        angle: "28",
+        fileType: "png",
+      }).forEach(([k, v]) => imageUrl.searchParams.append(k, v));
 
-    const image = await Jimp.read(Buffer.from(response.data));
-    image.scan(0, 0, image.bitmap.width, image.bitmap.height, (px, py, idx) => {
-      const r = image.bitmap.data[idx];
-      const g = image.bitmap.data[idx + 1];
-      const b = image.bitmap.data[idx + 2];
-      const a = image.bitmap.data[idx + 3];
-      if (a < 200 || (r + g + b) / 3 > 200) {
-        image.bitmap.data[idx] = Math.min(255, r + 40);
-        image.bitmap.data[idx + 1] = Math.min(255, g + 40);
-        image.bitmap.data[idx + 2] = Math.min(255, b + 40);
-        image.bitmap.data[idx + 3] = 255;
+      const response = await axios.get(imageUrl.toString(), {
+        responseType: "arraybuffer",
+        headers: { Referer: "https://www.imagin.studio" },
+        timeout: 30000,
+      });
+
+      const image = await Jimp.read(Buffer.from(response.data));
+      image.scan(0, 0, image.bitmap.width, image.bitmap.height, (px, py, idx) => {
+        const r = image.bitmap.data[idx];
+        const g = image.bitmap.data[idx + 1];
+        const b = image.bitmap.data[idx + 2];
+        const a = image.bitmap.data[idx + 3];
+        if (a < 200 || (r + g + b) / 3 > 200) {
+          image.bitmap.data[idx] = Math.min(255, r + 40);
+          image.bitmap.data[idx + 1] = Math.min(255, g + 40);
+          image.bitmap.data[idx + 2] = Math.min(255, b + 40);
+          image.bitmap.data[idx + 3] = 255;
+        }
+      });
+      imageBuffer = await image.getBuffer("image/jpeg");
+    } catch (imaginError) {
+      console.log('Imagin API failed, falling back to ChatGPT:', imaginError.message);
+      useFallback = true;
+
+      try {
+        const openaiClient = new openai.OpenAI({
+          apiKey: process.env.OPENAI_API_KEY,
+        });
+
+        const prompt = `Generate a high-quality car image of a ${brand} ${category} ${model} in ${color} color, ${back || "sedan"} body style. The car should be shown from a side angle (28 degrees) on a white background. The image should be professional, realistic, and suitable for a car dealership website.`;
+
+        const imageResponse = await openaiClient.images.generate({
+          model: "dall-e-3",
+          prompt: prompt,
+          size: "1024x1024",
+          quality: "standard",
+          n: 1,
+        });
+
+        const imageUrl = imageResponse.data[0].url;
+        const imageResponseBuffer = await axios.get(imageUrl, {
+          responseType: 'arraybuffer',
+        });
+        imageBuffer = Buffer.from(imageResponseBuffer.data);
+      } catch (chatgptError) {
+        console.error('ChatGPT fallback also failed:', chatgptError.message);
+        return next(new apiError('Failed to generate car image using both Imagin and ChatGPT APIs', 500));
       }
-    });
-    const cleanBuffer = await image.getBuffer("image/jpeg");
-    const bgRemovedBuffer = await removeBgExternal(cleanBuffer);
+    }
+
+    const bgRemovedBuffer = await removeBgExternal(imageBuffer);
     const publicId = `${brand}_${model}_${category}_${color}`
       .toLowerCase()
       .replace(/\s+/g, "-");
@@ -551,41 +601,16 @@ exports.setCarImg = asyncHandler(async (req, res, next) => {
       );
       stream.end(bgRemovedBuffer);
     });
-  } else if (method === "upload") {
-    if (!req.file) {
-      return next(
-        new apiError("Image file is required when method is upload", 400),
-      );
-    }
-    const bgRemovedBuffer = await removeBgExternal(req.file.buffer);
 
-    result = await new Promise((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        {
-          folder: "cars",
-          transformation: [
-            {
-              width: 1920,
-              height: 1080,
-              crop: "fill",
-              gravity: "center",
-            },
-          ],
-        },
-        (error, data) => (error ? reject(error) : resolve(data)),
-      );
-      stream.end(bgRemovedBuffer);
-    });
-  } else {
-    return next(new apiError("method must be generate or upload", 400));
-  }
+
 
   // Save image URL and publicId to car model
   car.image = result.secure_url;
   car.imagePublicId = result.public_id;
   await car.save({ validateBeforeSave: false });
   // Find the specific car in user's car array and update it
-  const userCar = user.car.find((c) => c.id?.toString() === car._id.toString());
+  const userCar = user.car.find((c) => c.id?.toString() === car._id?.toString());
+
 
   if (userCar) {
     userCar.image = result.secure_url;

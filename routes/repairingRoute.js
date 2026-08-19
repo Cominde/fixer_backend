@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   createRepairing,
+  walkInRepair,
   getCarRepairsByNumber,
   updateServiceStateById,
   getAllComRepairs,
@@ -133,6 +134,90 @@ const {
  *         description: Validation error
  */
 router.route("/").post(createRepairing).get(getAllComRepairs);
+
+/**
+ * @swagger
+ * /repairing/walkIn:
+ *   post:
+ *     summary: Create a walk-in repair (without car/user in system)
+ *     tags: [Repairing]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [clientName, carNumber, brand, category, model]
+ *             properties:
+ *               clientName:
+ *                 type: string
+ *                 example: "John Doe"
+ *               carNumber:
+ *                 type: string
+ *                 example: "أ ن ق - 217"
+ *               brand:
+ *                 type: string
+ *                 example: "MITSUBISHI"
+ *               category:
+ *                 type: string
+ *                 example: "LANCER PUMA"
+ *               model:
+ *                 type: string
+ *                 example: "2010"
+ *               type:
+ *                 type: string
+ *                 enum: [periodic, nonPeriodic]
+ *                 example: "periodic"
+ *               components:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     quantity:
+ *                       type: number
+ *               services:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     price:
+ *                       type: number
+ *                     state:
+ *                       type: string
+ *               additions:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     price:
+ *                       type: number
+ *               discount:
+ *                 type: number
+ *                 example: 0
+ *               daysItTake:
+ *                 type: number
+ *                 example: 3
+ *               Note1:
+ *                 type: string
+ *               Note2:
+ *                 type: string
+ *               distance:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Walk-in repair created successfully
+ *       400:
+ *         description: Validation error
+ */
+router.route("/walkIn").post(walkInRepair);
 
 /**
  * @swagger

@@ -231,3 +231,66 @@ exports.notifyAdmins = async ({
     };
   }
 };
+
+// ─── Low Inventory Quantity Warning ──────────────────────────────
+exports.sendLowQuantityNotification = async (componentName, quantity) => {
+  const admins = await User.find({
+    role: "admin",
+    fcmToken: { $exists: true, $ne: null },
+  });
+
+  if (admins.length === 0 || !admin.apps.length) return;
+
+  const tokens = admins.map((a) => a.fcmToken);
+  const message = {
+    notification: {
+      title: "⚠️ Low Inventory Warning",
+      body: `The quantity of ${componentName} is ${quantity} which is low. Please restock soon.`,
+    },
+    data: {
+      type: "low_inventory",
+      componentName: componentName,
+      quantity: String(quantity),
+    },
+    android: {
+      priority: "high",
+    },
+    apns: {
+      payload: {
+        aps: {
+          sound: "default",
+        },
+      },
+    },
+    tokens,
+  };
+
+  try {
+    const response = await admin.messaging().sendEachForMulticast(message);
+
+    response.responses.forEach((r, idx) => {
+      if (
+        !r.success &&
+        (r.error?.code === "messaging/registration-token-not-registered" ||
+          r.error?.code === "messaging/invalid-registration-token")
+      ) {
+        User.findByIdAndUpdate(admins[idx]._id, {
+          $unset: { fcmToken: 1 },
+        }).catch(() => {});
+      }
+    });
+
+    return {
+      success: response.successCount > 0,
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+    };
+  } catch (error) {
+    console.error("Failed to send low quantity notification:", error);
+    return {
+      success: false,
+      message: "Failed to notify admins about low inventory",
+      error: error.message,
+    };
+  }
+};

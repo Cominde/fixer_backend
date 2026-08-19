@@ -1,24 +1,13 @@
 const mongoose = require("mongoose");
 const { cairoDatePlugin } = require("../utils/cairoDate");
 
-// Define schema for the array elements
-//const additions = new mongoose.Schema({
-//  name: {
-//    type: String,
-//    required: true
-//  },
-//  servicePrice: {
-//    type: Number,
-//    required: true
-//  }
-//});
-
-// Define the main schema
-const repairingSchema = new mongoose.Schema(
+const measurementSchema = new mongoose.Schema(
   {
     client: { type: String },
-    genId: {
+    measurementNumber: {
       type: String,
+      required: [true, "Measurement Number is required"],
+      unique: true,
     },
     brand: { type: String },
     category: { type: String },
@@ -51,7 +40,7 @@ const repairingSchema = new mongoose.Schema(
           default: "repairing",
         },
       },
-    ], //  Services array
+    ],
     additions: [
       {
         name: {
@@ -112,9 +101,20 @@ const repairingSchema = new mongoose.Schema(
     nextRepairDate: {
       type: Date,
     },
-    oldgenId: {
-      type: String,
-      required: false,
+    acceptance: {
+      type: Boolean,
+      default: false,
+    },
+    acceptedAt: {
+      type: Date,
+    },
+    convertedToRepair: {
+      type: Boolean,
+      default: false,
+    },
+    repairId: {
+      type: mongoose.Schema.ObjectId,
+      ref: "repairing",
     },
     carId: {
       type: mongoose.Schema.ObjectId,
@@ -123,21 +123,9 @@ const repairingSchema = new mongoose.Schema(
     generatedCode: {
       type: String,
     },
-    technicians: [
-      {
-        workerId: {
-          type: mongoose.Schema.ObjectId,
-          ref: "Worker",
-        },
-        name: {
-          type: String,
-        },
-      },
-    ],
   },
-
-  // مفيده ليا لو عايز اجيب ال منتج الاحدث بالوقت
   { timestamps: true },
 );
-repairingSchema.plugin(cairoDatePlugin);
-module.exports = mongoose.model("repairing", repairingSchema);
+
+measurementSchema.plugin(cairoDatePlugin);
+module.exports = mongoose.model("measurement", measurementSchema);

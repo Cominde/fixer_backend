@@ -42,6 +42,10 @@ const workerSchema = new mongoose.Schema(
         date: { type: Date },
       },
     ],
+    numberOfRepairs: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true },
 );
