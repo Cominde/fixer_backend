@@ -291,15 +291,16 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   });
 
   // Increment numberOfRepairs for each technician
+  /*
   if (technicians && technicians.length > 0) {
     for (const technician of technicians) {
-      const worker = await Worker.findById(technician.workerId);
+      const worker = await Worker.find({technician.workerId});
       if (worker) {
         worker.numberOfRepairs += 1;
         await worker.save();
       }
     }
-  }
+  }*/
   if (!complete) {
     const car = await Car.findOneAndUpdate(
       { carNumber: carNumber },
@@ -505,7 +506,7 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
     distance: distance || 0,
     technicians: technicians || [],
   });
-
+  /*
   // Increment numberOfRepairs for each technician
   if (technicians && technicians.length > 0) {
     for (const technician of technicians) {
@@ -516,7 +517,7 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
       }
     }
   }
-
+  */
   res.status(201).json({ data: repair });
 });
 
