@@ -44,7 +44,7 @@ const authService = require("../services/authService");
  */
 router
   .route("/saveFCMToken/:userId")
-  .put(authService.protect, authService.allowedTo("user","admin"), saveFCMToken);
+  .put(saveFCMToken);
 
 /**
  * @swagger
