@@ -94,8 +94,8 @@ const authService = require("../services/authService");
  */
 router
   .route("/")
-  .post(authService.protect, authService.allowedTo("admin", "mechanic"), createMeasurement)
-  .get(authService.protect, authService.allowedTo("admin", "mechanic"), getAllMeasurements);
+  .post(authService.protect,authService.allowedTo("admin"), createMeasurement)
+  .get(authService.protect,authService.allowedTo("admin"), getAllMeasurements);
 
 /**
  * @swagger
@@ -181,7 +181,7 @@ router
  */
 router
   .route("/walkIn")
-  .post(authService.protect, authService.allowedTo("admin", "mechanic"), walkInMeasurement);
+  .post(authService.protect,authService.allowedTo("admin"), walkInMeasurement);
 
 /**
  * @swagger
