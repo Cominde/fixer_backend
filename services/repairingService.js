@@ -291,16 +291,16 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   });
 
   // Increment numberOfRepairs for each technician
-  /*
+  
   if (technicians && technicians.length > 0) {
     for (const technician of technicians) {
-      const worker = await Worker.find({technician.workerId});
+      const worker = await Worker.findById(technician.workerId);
       if (worker) {
         worker.numberOfRepairs += 1;
         await worker.save();
       }
     }
-  }*/
+  }
   if (!complete) {
     const car = await Car.findOneAndUpdate(
       { carNumber: carNumber },
@@ -506,7 +506,7 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
     distance: distance || 0,
     technicians: technicians || [],
   });
-  /*
+  
   // Increment numberOfRepairs for each technician
   if (technicians && technicians.length > 0) {
     for (const technician of technicians) {
@@ -517,7 +517,7 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
       }
     }
   }
-  */
+  
   res.status(201).json({ data: repair });
 });
 
@@ -885,6 +885,23 @@ exports.getRepairsReport = asyncHandler(async (req, res, next) => {
   const carInfo = await Car.findById(Repair.carId);
 
   if (!carInfo) {
+    if(!Repair.carId){
+        const info = {
+    name: Repair.client,
+    //phone: userInfo.phoneNumber,
+    carNumber: Repair.carNumber,
+    brand: Repair.brand,
+    category: Repair.category,
+    model: Repair.model,
+    distances: Repair.distance,
+    note1: Repair.Note1,
+    note2: Repair.Note2,
+  };
+  res.status(200).json({
+    repair: Repair,
+    data: info,
+  });
+    }
     return next(
       new apiError(`Can't find car with this id ${Repair.carId}`, 404),
     );
@@ -1358,6 +1375,53 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
     }
     repair.nextRepairDistance = req.body.nextRepairDistance;
   }
+
+  // Handle technicians updates
+  if (req.body.technicians && req.body.technicians.length > 0) {
+    for (const tech of req.body.technicians) {
+      const { workerId, name, remove } = tech;
+
+      if (workerId) {
+        const repairTechnician = repair.technicians?.find(
+          (t) => t.workerId?.toString() === workerId
+        );
+
+        if (repairTechnician) {
+          if (remove) {
+            // Remove technician and decrement count
+            const worker = await Worker.findById(workerId);
+            if (worker) {
+              worker.numberOfRepairs = Math.max(0, worker.numberOfRepairs - 1);
+              await worker.save();
+            }
+            repair.technicians = repair.technicians.filter(
+              (t) => t.workerId?.toString() !== workerId
+            );
+          } else {
+            // Update technician name if provided
+            if (name) {
+              repairTechnician.name = name;
+            }
+          }
+        } else {
+          // Add new technician
+          if (!remove) {
+            const worker = await Worker.findById(workerId);
+            if (worker) {
+              worker.numberOfRepairs += 1;
+              await worker.save();
+            }
+            repair.technicians.push({ workerId, name });
+          }
+        }
+      } else {
+        // Add new technician without workerId (just name)
+        if (!remove && name) {
+          repair.technicians.push({ name });
+        }
+      }
+    }
+  }
   if (req.body.daysItTake) {
     const expectedDate = new Date();
     expectedDate.setDate(
@@ -1372,6 +1436,36 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
   }
   repair.totalPrice = totalPrice;
   repair.priceAfterDiscount = priceAfterDiscount;
+  if (req.body.technicians && req.body.technicians.length > 0) {
+    for (const { workerId, name ,remove } of req.body.technicians) {
+      if (!workerId) {
+        return next(new apiError("must send the worker id ", 400),)
+      };
+        const existRepairWorkers = repair.technicians.find(
+          (comp) => comp.workerId.toString() === workerId,
+        );
+        if (existRepairWorkers) {
+          if (remove) {
+            repair.technicians = repair.technicians.filter(
+              (comp) => comp.workerId.toString() !== workerId,
+            );
+            const worker = await Worker.findById(workerId);
+          if (worker) {
+          worker.numberOfRepairs = Math.max(0, worker.numberOfRepairs - 1);
+          await worker.save();
+          }
+          }
+        }
+        else {
+          
+          const worker = await Worker.findById(workerId);
+          if (worker) {
+            worker.numberOfRepairs += 1;
+            await worker.save();
+          }
+          repair.technicians.push({ workerId, name });
+        }
+    }}
 
   await repair.save();
 
