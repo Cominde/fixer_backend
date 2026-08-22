@@ -1248,34 +1248,15 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
     updateTotalPrice = 0;
   }
   if (req.body.additions && req.body.additions.length > 0) {
-    for (const { id: additionId, name, price, remove } of req.body.additions) {
+    // Process each incoming addition exactly once to avoid duplicates
+    for (const add of req.body.additions) {
+      const { id: additionId, name, price, remove } = add;
+
       if (additionId) {
         const repairAddition = repair.additions.find(
           (comp) => comp._id.toString() === additionId,
         );
-        if (repairAddition) {
-          if (remove) {
-            updateTotalPrice -= repairAddition.price;
-            repair.additions = repair.additions.filter(
-              (comp) => comp._id.toString() !== additionId,
-            );
-          } else {
-            if (name) {
-              repairAddition.name = name;
-            }
-            if (price) {
-              if (repairAddition.price > price) {
-                diffPrice = repairAddition.price - price;
-                updateTotalPrice -= diffPrice;
-              } else if (repairAddition.price < price) {
-                diffPrice = price - repairAddition.price;
-                updateTotalPrice += diffPrice;
-              }
-              repairAddition.price = price;
-            }
-          }
-          await repairAddition.save();
-        } else {
+        if (!repairAddition) {
           return next(
             new apiError(
               `addition with id ${additionId} not found in the repair`,
@@ -1283,13 +1264,32 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
             ),
           );
         }
-      } else {
-        for (const { price } of req.body.additions) {
-          if (price) {
-            updateTotalPrice += Number(price);
+
+        if (remove) {
+          updateTotalPrice -= repairAddition.price;
+          repair.additions = repair.additions.filter(
+            (comp) => comp._id.toString() !== additionId,
+          );
+        } else {
+          if (name) {
+            repairAddition.name = name;
+          }
+          if (price !== undefined) {
+            if (repairAddition.price > price) {
+              diffPrice = repairAddition.price - price;
+              updateTotalPrice -= diffPrice;
+            } else if (repairAddition.price < price) {
+              diffPrice = price - repairAddition.price;
+              updateTotalPrice += diffPrice;
+            }
+            repairAddition.price = price;
           }
         }
-        repair.additions = repair.additions.concat(req.body.additions);
+        // subdocument will be persisted when parent is saved
+      } else {
+        // new addition
+        if (price) updateTotalPrice += Number(price);
+        repair.additions.push({ name, price });
       }
     }
     totalPrice = totalPrice + updateTotalPrice;
