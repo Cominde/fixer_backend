@@ -3,7 +3,7 @@ const Inventory = require("../models/Inventory");
 const asyncHandler = require("express-async-handler");
 const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
-const searchService = require("./searchService");
+const {searchService} = require("./searchService");
 
 // @desc add Component
 // @Route GET /api/v1/Inventort
