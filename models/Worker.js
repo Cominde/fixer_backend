@@ -46,6 +46,10 @@ const workerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    role: {
+      type: String,
+      required:[true,"the role of the worker is required for thew system"]
+    }
   },
   { timestamps: true },
 );

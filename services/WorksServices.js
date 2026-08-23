@@ -10,7 +10,7 @@ const searchService = require("./searchService");
 // @Route post /api/v1/Worker
 // @access private
 exports.addWorker = asyncHandler(async (req, res) => {
-  const { name, phoneNumber, jobTitle, salary, IdNumber } = req.body;
+  const { name, phoneNumber, jobTitle, salary, IdNumber ,role} = req.body;
 
   const newDoc = await Worker.create({
     name,
@@ -20,6 +20,7 @@ exports.addWorker = asyncHandler(async (req, res) => {
     IdNumber,
     salaryAfterProcces: salary,
     salaryAfterReword: salary,
+    role,
   });
   res.status(201).json({ data: newDoc });
 });
@@ -27,7 +28,32 @@ exports.addWorker = asyncHandler(async (req, res) => {
 // @desc Get list of Worker
 // @Route GET /api/v1/Worker
 // @access private
-exports.getAllWorkers = factory.getAll(Worker);
+exports.getAllWorkers = asyncHandler(async (req, res, next) => {
+
+
+    const documentsCounts = await Worker.countDocuments();
+    const apiFeatures = new ApiFeatures(Worker.find(), req.query)
+      .paginate(documentsCounts)
+      .filter()
+      .search()
+      .limitFields();
+
+    const { mongooseQuery, paginationResult } = apiFeatures;
+    let documents = await mongooseQuery;
+
+    documents = documents.sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+    );
+    for (let i =0 ; i < documents.length ; i +=1){
+      delete documents[i]._doc.salary;
+      delete documents[i]._doc.salaryAfterProcces;
+      delete documents[i]._doc.salaryAfterReword;
+    }
+      
+    res
+      .status(200)
+      .json({ results: documents.length, paginationResult, data: documents });
+  });
 
 // @desc Get spacific Worker
 // @Route GET /api/v1/Worker
@@ -69,6 +95,45 @@ exports.UpdateWorkerDetals = factory.updateOne(Worker);
 // @Route DELTE /api/v1/Worker
 // @access private
 exports.deleteWorker = factory.deleteOne(Worker);
+
+// @desc Get list of Worker with salary
+// @Route GET /api/v1/Worker/salary
+// @access private
+exports.getAllWorkersWithSalary = asyncHandler(async (req, res, next) => {
+  const documentsCounts = await Worker.countDocuments();
+  const apiFeatures = new ApiFeatures(Worker.find(), req.query)
+    .paginate(documentsCounts)
+    .filter()
+    .search()
+    .limitFields();
+
+  const { mongooseQuery, paginationResult } = apiFeatures;
+  let documents = await mongooseQuery;
+
+  documents = documents.sort(
+    (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+  );
+
+  res
+    .status(200)
+    .json({ results: documents.length, paginationResult, data: documents });
+});
+
+// @desc Get specific Worker with salary by ID
+// @Route GET /api/v1/Worker/salary/:id
+// @access private
+exports.getWorkerWithSalaryById = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const worker = await Worker.findById(id);
+
+  if (!worker) {
+    return next(
+      new apiError(`No worker for this id ${id}`, 404),
+    );
+  }
+
+  res.status(200).json({ data: worker });
+});
 
 // @desc Update spacific Worker
 // @Route GET /api/v1/Worker:IdNumber
