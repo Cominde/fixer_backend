@@ -158,7 +158,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     }
     inventoryComponent.quantity -= quantity;
 
-    await inventoryComponent.save();
+    await inventoryComponent.save({validateBeforeSave:false});
 
     // Check if quantity is low and send notification to admin
     if (inventoryComponent.quantity < 5) {
