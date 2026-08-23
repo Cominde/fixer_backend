@@ -455,7 +455,7 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
       );
     }
     inventoryComponent.quantity -= quantity;
-    await inventoryComponent.save();
+    await inventoryComponent.save({validateBeforeSave:false});
 
     // Check if quantity is low and send notification to admin
     if (inventoryComponent.quantity < 5) {
@@ -1040,7 +1040,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
             inventory.quantity += repairComponent.quantity;
             diffPrice = inventory.price * repairComponent.quantity;
             updateTotalPrice -= diffPrice;
-            await inventory.save();
+            await inventory.save({validateBeforeSave:false});
           } else {
             return next(
               new apiError(
@@ -1092,7 +1092,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
             repairComponent.quantity = quantity;
           }
         }
-        await inventory.save();
+        await inventory.save({validateBeforeSave:false});
         await repairComponent.save();
       } else {
         const inventoryComponent = await Inventory.findById(componentId);
@@ -1129,7 +1129,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
         }
 
         inventoryComponent.quantity -= quantity;
-        await inventoryComponent.save();
+        await inventoryComponent.save({validateBeforeSave:false});
 
         // Check if quantity is low and send notification to admin
         if (inventoryComponent.quantity < 5) {
@@ -1505,7 +1505,7 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
       const inventoryItem = await Inventory.findOne({ componentId });
       if (inventoryItem) {
         inventoryItem.quantity += quantity;
-        await inventoryItem.save();
+        await inventoryItem.save({validateBeforeSave:false});
       } else {
         new apiError(`there is no component with this id ${componentId}`, 404);
       }
