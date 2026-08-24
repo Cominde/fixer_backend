@@ -219,9 +219,38 @@ exports.getCar = asyncHandler(async (req, res, next) => {
   if(!cRepair){
     return next(new apiError(`Can't find car with this id ${id}`, 404));
   }
+  
+  // Transform repair into car-like structure for frontend compatibility
+  const carLikeData = {
+    _id: cRepair._id,
+    ownerName: cRepair.client || "Unknown",
+    carNumber: cRepair.carNumber || "",
+    brand: cRepair.brand || "",
+    category: cRepair.category || "",
+    model: cRepair.model || "",
+    State: "Repair",
+    generatedCode: cRepair.genId || "",
+    repairing: true,
+    repairing_id: cRepair._id,
+    createdAt: cRepair.createdAt,
+    color: "",
+    chassisNumber: "",
+    motorNumber: "",
+    periodicRepairs: 0,
+    nonPeriodicRepairs: 0,
+    completedServicesRatio: cRepair.completedServicesRatio || 0,
+    nextRepairDate: cRepair.expectedDate || null,
+    lastRepairDate: null,
+    nextRepairDistance: cRepair.distance || null,
+    distances: cRepair.distance || null,
+    componentState: [],
+    image: "https://res.cloudinary.com/dcj7fkdub/image/upload/v1777995080/def_ljjwcj.png",
+    imagePublicId: "cars/def_img"
+  };
+  
   return res.status(200).json({ 
     data: { 
-      car: null, 
+      car: carLikeData, 
       cRepair,
       repairs: [cRepair], 
       repairing: null,
@@ -242,7 +271,12 @@ exports.getCar = asyncHandler(async (req, res, next) => {
     complete: false,
   });
 
-  res.status(200).json({ data: { car, repairing, currentRepair } });
+  // Build repairs array for consistency
+  const repairs = [];
+  if (repairing) repairs.push(repairing);
+  if (currentRepair) repairs.push(currentRepair);
+
+  res.status(200).json({ data: { car, repairs, repairing, currentRepair } });
 });
 
 // @desc    Get list of repairing cars
