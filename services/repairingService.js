@@ -464,7 +464,7 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
     await inventoryComponent.save({ validateBeforeSave: false });
 
     // Check if quantity is low and send notification to admin
-    if (inventoryComponent.quantity < 5) {
+    if (inventoryComponent.quantity < inventoryComponent.alertQuantity) {
       try {
         await sendLowQuantityNotification(
           inventoryComponent.name,
@@ -1145,7 +1145,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
         await inventoryComponent.save({ validateBeforeSave: false });
 
         // Check if quantity is low and send notification to admin
-        if (inventoryComponent.quantity < inventoryComponent.alertQuantity) {
+        if (inventoryComponsent.quantity < inventoryComponent.alertQuantity) {
           try {
             await sendLowQuantityNotification(
               inventoryComponent.name,
