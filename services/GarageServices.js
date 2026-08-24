@@ -219,7 +219,15 @@ exports.getCar = asyncHandler(async (req, res, next) => {
   if(!cRepair){
     return next(new apiError(`Can't find car with this id ${id}`, 404));
   }
-   return res.status(200).json({ data: { car, cRepair } });
+  return res.status(200).json({ 
+    data: { 
+      car: null, 
+      cRepair,
+      repairs: [cRepair], 
+      repairing: null,
+      currentRepair: cRepair
+    } 
+  });
   }
 
  
