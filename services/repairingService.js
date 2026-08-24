@@ -821,7 +821,7 @@ exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   if (!car || car.length === 0) {
     repair = await Repairing.findById(id)
     if(repair){
-      return res.status(200).json({ data: repair });
+      return res.status(200).json({ data: [repair] });
     }
     
     return next(new apiError(`Can't car with this id ${id}`, 404));
