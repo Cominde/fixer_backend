@@ -1145,7 +1145,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
         await inventoryComponent.save({ validateBeforeSave: false });
 
         // Check if quantity is low and send notification to admin
-        if (inventoryComponsent.quantity < inventoryComponent.alertQuantity) {
+        if (inventoryComponent.quantity < inventoryComponent.alertQuantity) {
           try {
             await sendLowQuantityNotification(
               inventoryComponent.name,
@@ -1532,6 +1532,15 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
     if (car) {
       car.repairing_id = null;
       await car.save();
+    }
+  }
+  if (repair.technicians && repair.technicians.length > 0) {
+    for (const technician of repair.technicians) {
+      const worker = await Worker.findById(technician.workerId);
+      if (worker) {
+        worker.numberOfRepairs -= 1;
+        await worker.save();
+      }
     }
   }
   await repair.deleteOne();
