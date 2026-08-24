@@ -215,8 +215,15 @@ exports.getCar = asyncHandler(async (req, res, next) => {
 
   const car = await Car.findById(id);
   if (!car) {
+  const cRepair = await Repairing.findById(id);
+  if(!cRepair){
     return next(new apiError(`Can't find car with this id ${id}`, 404));
   }
+   return res.status(200).json({ data: { car, cRepair } });
+  }
+
+ 
+
 
   const repairing = await Repairing.findOne({
     carNumber: { $in: car.carNumber },
