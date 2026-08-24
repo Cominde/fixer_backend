@@ -815,15 +815,24 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
 // @access private
 exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
+  const { type } = req.body;
   const car = await Car.findById(id);
 
   if (!car || car.length === 0) {
     return next(new apiError(`Can't car with this id ${id}`, 404));
   }
 
-  const repairing = await Repairing.find({
-    carId: car._id,
-  });
+  let query = { carId: car._id };
+  
+  // Filter by type if specified
+  if (type === "periodic") {
+    query.type = "periodic";
+  } else if (type === "nonPeriodic") {
+    query.type = "nonPeriodic";
+  }
+  // If type is "all" or not specified, return all repairs (no filter)
+
+  const repairing = await Repairing.find(query);
   if (!repairing || repairing.length === 0) {
     return next(new apiError(`Can't find services for this car  ${id}`, 404));
   }

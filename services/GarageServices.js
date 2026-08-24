@@ -246,7 +246,29 @@ exports.getRepairingCars = asyncHandler(async (req, res, next) => {
   const { mongooseQuery, paginationResult } = apiFeatures;
   let documents = await mongooseQuery;
 
-  if (!documents) {
+  // Get repairs where complete = false and no generatedCode
+  const incompleteRepairs = await Repairing.find({
+    complete: false,
+    $or: [
+      { generatedCode: null },
+      { generatedCode: { $exists: false } },
+      { generatedCode: "" }
+    ]
+  });
+
+  // Get car information for incomplete repairs
+  const carIds = incompleteRepairs.map(repair => repair.carId);
+  const carsFromRepairs = await Car.find({ _id: { $in: carIds } });
+
+  // Combine documents (avoid duplicates)
+  const existingCarIds = new Set(documents.map(doc => doc._id.toString()));
+  carsFromRepairs.forEach(car => {
+    if (!existingCarIds.has(car._id.toString())) {
+      documents.push(car);
+    }
+  });
+
+  if (!documents || documents.length === 0) {
     return next(new apiError(`There are no cars in repairs`, 404));
   }
 
