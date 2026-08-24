@@ -251,9 +251,8 @@ exports.getCar = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ 
     data: { 
       car: carLikeData, 
-      cRepair,
       repairs: [cRepair], 
-      repairing: null,
+      repairing: cRepair,
       currentRepair: cRepair
     } 
   });
