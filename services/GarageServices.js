@@ -255,18 +255,12 @@ exports.getRepairingCars = asyncHandler(async (req, res, next) => {
       { generatedCode: "" }
     ]
   });
+  for ( let i = 0 ; i < incompleteRepairs.length; i+=1){
+    documents.push(incompleteRepairs[i]);
+  }
 
-  // Get car information for incomplete repairs
-  const carIds = incompleteRepairs.map(repair => repair.carId);
-  const carsFromRepairs = await Car.find({ _id: { $in: carIds } });
-
-  // Combine documents (avoid duplicates)
-  const existingCarIds = new Set(documents.map(doc => doc._id.toString()));
-  carsFromRepairs.forEach(car => {
-    if (!existingCarIds.has(car._id.toString())) {
-      documents.push(car);
-    }
-  });
+  
+ 
 
   if (!documents || documents.length === 0) {
     return next(new apiError(`There are no cars in repairs`, 404));
