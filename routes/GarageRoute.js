@@ -308,7 +308,7 @@ router.route("/add/:id").post(addCar);
  *         description: Car not found
  */
 router
-  .route("/update/:id")
+  .route("/updateCar/:id")
   .put(uploadSingleImage("image"), updateCarImage, updateCar);
 
 /**
