@@ -18,17 +18,19 @@ exports.addComponent = asyncHandler(async (req, res, next) => {
       ),
     );
   }
-  const ConponentCode = await Inventory.findOne(
-    { Code: req.body.Code },
-    { new: true },
-  );
-  if (ConponentCode) {
-    return next(
-      new apiError(
-        `there is an Component with this Code , please do update instead of add the id of Component is ${ConponentCode._id}`,
-        400,
-      ),
+  if (req.body.Code) {
+    const ConponentCode = await Inventory.findOne(
+      { Code: req.body.Code },
+      { new: true },
     );
+    if (ConponentCode) {
+      return next(
+        new apiError(
+          `there is an Component with this Code , please do update instead of add the id of Component is ${ConponentCode._id}`,
+          400,
+        ),
+      );
+    }
   }
   const newDoc = await Inventory.create(req.body);
   res.status(201).json({ data: newDoc });
