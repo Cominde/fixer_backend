@@ -21,7 +21,6 @@ const inventorySchema = new mongoose.Schema(
     },
     Code: {
       type: String,
-      unique: [true, "the Code is used before"],
     },
     alertQuantity: {
       type: Number,
