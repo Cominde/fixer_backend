@@ -116,7 +116,9 @@ router.route("/repairing").get(checkPermission("cars.view"), getRepairingCars);
  *                     type: string
  *                   example: ["MITSUBISHI", "BMW", "TOYOTA"]
  */
-router.route("/getCarsInDB/").get(checkPermission("cars.view"), getUniqueBrands);
+router
+  .route("/getCarsInDB/")
+  .get(checkPermission("cars.view"), getUniqueBrands);
 
 /**
  * @swagger
@@ -164,7 +166,9 @@ router
  *       200:
  *         description: Matching cars
  */
-router.route("/search/:searchString").get(checkPermission("cars.view"), searchForallCars);
+router
+  .route("/search/:searchString")
+  .get(checkPermission("cars.view"), searchForallCars);
 
 /**
  * @swagger
@@ -185,7 +189,9 @@ router.route("/search/:searchString").get(checkPermission("cars.view"), searchFo
  *       200:
  *         description: Matching cars in repair
  */
-router.route("/search/repairing/:searchString").get(checkPermission("cars.view"), searchForRepairingCars);
+router
+  .route("/search/repairing/:searchString")
+  .get(checkPermission("cars.view"), searchForRepairingCars);
 
 /**
  * @swagger
@@ -310,7 +316,13 @@ router.route("/add/:id").post(checkPermission("cars.add"), addCar);
  */
 router
   .route("/updateCar/:id")
-  .put(checkPermission("cars.edit"), uploadSingleImage("image"), updateCarImage, updateCar);
+
+  .put(
+    checkPermission("cars.edit"),
+    uploadSingleImage("image"),
+    updateCarImage,
+    updateCar,
+  );
 
 /**
  * @swagger
@@ -464,5 +476,11 @@ router.route("/:carNumber").put(checkPermission("cars.edit"), makeCarInRepair);
  *                   type: string
  *                   example: Internal server error
  */
-router.route("/carImg/setCarImg").put(checkPermission("cars.image.generate"), uploadSingleImage("image"), setCarImg);
+router
+  .route("/carImg/setCarImg")
+  .put(
+    checkPermission("cars.image.generate"),
+    uploadSingleImage("image"),
+    setCarImg,
+  );
 module.exports = router;

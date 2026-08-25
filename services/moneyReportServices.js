@@ -148,9 +148,7 @@ exports.put_the_bills_rent = asyncHandler(async (req, res, next) => {
   ) {
     return next(new apiError("The values must be positive", 400));
   }
-  console.log(year_month);
   let [year, month] = year_month.split("_").map(Number);
-  console.log(year, month);
   if (isNaN(month) || isNaN(year)) {
     return next(new apiError("Invalid month and year", 400));
   }
@@ -282,6 +280,7 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
   const sortedAdditions = additions.sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
   );
+
   if (monthlyReport.rent) {
     sortedAdditions.push({
       title: "rent",

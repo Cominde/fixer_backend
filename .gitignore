@@ -1,5 +1,5 @@
 node_modules/
-
+scripts/*
 config.env
 
 fixer_backend/

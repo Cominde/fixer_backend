@@ -3,7 +3,8 @@ const Inventory = require("../models/Inventory");
 const asyncHandler = require("express-async-handler");
 const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
-const {searchService} = require("./searchService");
+
+const { searchService } = require("./searchService");
 
 // @desc add Component
 // @Route GET /api/v1/Inventort
@@ -18,19 +19,21 @@ exports.addComponent = asyncHandler(async (req, res, next) => {
       ),
     );
   }
-  if(req.body.Code){
-  const ConponentCode = await Inventory.findOne(
-    { Code: req.body.Code },
-    { new: true },
-  );
-    if (ConponentCode) {
-    return next(
-      new apiError(
-        `there is an Component with this Code , please do update instead of add the id of Component is ${ConponentCode._id}`,
-        400,
-      ),
+
+  if (req.body.Code) {
+    const ConponentCode = await Inventory.findOne(
+      { Code: req.body.Code },
+      { new: true },
     );
-  }}
+    if (ConponentCode) {
+      return next(
+        new apiError(
+          `there is an Component with this Code , please do update instead of add the id of Component is ${ConponentCode._id}`,
+          400,
+        ),
+      );
+    }
+  }
   const newDoc = await Inventory.create(req.body);
   res.status(201).json({ data: newDoc });
 });

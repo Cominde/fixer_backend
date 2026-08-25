@@ -53,7 +53,7 @@ const workerSchema = new mongoose.Schema(
     generatedPassword: {
       type: String,
       required: [true, "the generatedPassword is required"],
-    }
+    },
   },
   { timestamps: true },
 );
