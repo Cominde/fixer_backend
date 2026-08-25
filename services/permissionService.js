@@ -177,13 +177,11 @@ exports.getMyPermissions = asyncHandler(async (req, res, next) => {
     }
   
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    console.log(decoded)
     //check if user exists
     const workerId =
       decoded.userId && decoded.userId.userId
         ? decoded.userId.userId
         : decoded.userId;
-    console.log(workerId)
 
   // Validate worker exists
   const worker = await Worker.findById(workerId).populate("roleId");
