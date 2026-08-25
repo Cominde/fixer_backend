@@ -20,7 +20,26 @@ exports.getPermissionRegistry = asyncHandler(async (req, res) => {
  */
 exports.getAllRoles = asyncHandler(async (req, res) => {
   const roles = await Role.find().sort({ createdAt: -1 });
-  res.status(200).json({ results: roles.length, data: roles });
+  
+  // Get total permission count from registry
+  const totalPermissions = Object.keys(registry).length;
+  
+  // Get selected permissions for each role
+  const rolesWithPermissions = await Promise.all(
+    roles.map(async (role) => {
+      const rolePermissions = await RolePermission.find({ roleId: role._id });
+      const selectedPermissions = rolePermissions.map(rp => rp.permissionKey);
+      
+      return {
+        ...role.toObject(),
+        permissionCount: selectedPermissions.length,
+        totalPermissions,
+        selectedPermissions
+      };
+    })
+  );
+  
+  res.status(200).json({ results: rolesWithPermissions.length, data: rolesWithPermissions });
 });
 
 /**
