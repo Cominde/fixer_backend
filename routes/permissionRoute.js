@@ -5,6 +5,7 @@ const {
   getPermissionRegistry,
   getAllRoles,
   createRole,
+  deleteRole,
   setRolePermissions,
   getWorkerPermissions,
   setWorkerPermissions,
@@ -79,6 +80,31 @@ router
   .route("/roles")
   .get(checkPermission("permissions.roles.view"), getAllRoles)
   .post(checkPermission("permissions.roles.create"), createRole);
+
+/**
+ * @swagger
+ * /permissions/roles/{id}:
+ *   delete:
+ *     summary: Delete a role
+ *     tags: [Permissions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "6734de56e41091cfb6b02f7e"
+ *     responses:
+ *       204:
+ *         description: Role deleted successfully
+ *       404:
+ *         description: Role not found
+ */
+router
+  .route("/roles/:id")
+  .delete(checkPermission("permissions.roles.edit"), deleteRole);
 
 /**
  * @swagger

@@ -64,6 +64,27 @@ exports.createRole = asyncHandler(async (req, res, next) => {
 });
 
 /**
+ * Delete a role
+ */
+exports.deleteRole = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+
+  // Check if role exists
+  const role = await Role.findById(id);
+  if (!role) {
+    return next(new ApiError("Role not found", 404));
+  }
+
+  // Delete role permissions
+  await RolePermission.deleteMany({ roleId: id });
+
+  // Delete role
+  await Role.findByIdAndDelete(id);
+
+  res.status(204).send();
+});
+
+/**
  * Set role permissions
  */
 exports.setRolePermissions = asyncHandler(async (req, res, next) => {
@@ -94,9 +115,17 @@ exports.setRolePermissions = asyncHandler(async (req, res, next) => {
     );
   }
 
+  // Get existing permissions for this role
+  const existingPermissions = await RolePermission.find({ roleId: id });
+  const existingKeys = existingPermissions.map(rp => rp.permissionKey);
 
-  // Create new role permissions
-  const rolePermissions = permissions.map((permissionKey) => ({
+  // Only add permissions that don't already exist
+  const newPermissions = permissions.filter(
+    (permissionKey) => !existingKeys.includes(permissionKey)
+  );
+
+  // Create new role permissions (only the ones that don't exist)
+  const rolePermissions = newPermissions.map((permissionKey) => ({
     roleId: id,
     permissionKey,
   }));

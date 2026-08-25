@@ -281,33 +281,35 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
   );
 
-  if (monthlyReport.rent) {
-    sortedAdditions.push({
-      title: "rent",
-      date: null,
-      price: monthlyReport.rent,
-    });
-  }
-  if (monthlyReport.electricity_bill) {
-    sortedAdditions.push({
-      title: "Electricity bill",
-      date: null,
-      price: monthlyReport.electricity_bill,
-    });
-  }
-  if (monthlyReport.water_bill) {
-    sortedAdditions.push({
-      title: "Water bill",
-      date: null,
-      price: monthlyReport.water_bill,
-    });
-  }
-  if (monthlyReport.gas_bill) {
-    sortedAdditions.push({
-      title: "Gas bill",
-      date: null,
-      price: monthlyReport.gas_bill,
-    });
+  if (monthlyReport) {
+    if (monthlyReport.rent) {
+      sortedAdditions.push({
+        title: "rent",
+        date: null,
+        price: monthlyReport.rent,
+      });
+    }
+    if (monthlyReport.electricity_bill) {
+      sortedAdditions.push({
+        title: "Electricity bill",
+        date: null,
+        price: monthlyReport.electricity_bill,
+      });
+    }
+    if (monthlyReport.water_bill) {
+      sortedAdditions.push({
+        title: "Water bill",
+        date: null,
+        price: monthlyReport.water_bill,
+      });
+    }
+    if (monthlyReport.gas_bill) {
+      sortedAdditions.push({
+        title: "Gas bill",
+        date: null,
+        price: monthlyReport.gas_bill,
+      });
+    }
   }
 
   res
