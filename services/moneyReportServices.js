@@ -248,7 +248,7 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
     },
   }).select("client brand category model createdAt priceAfterDiscount");
 
-  const workers = await Worker.find().select("name salary");
+  const workers = await Worker.find().select("name");
 
   const monthlyReport = await MonthlyMoneyReport.findOne({
     date: {
@@ -272,16 +272,16 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
   );
     if (monthlyReport.rent ){
-    sortedAdditions.push({"rent": monthlyReport.rent})
+    sortedAdditions.push({"title":"rent","date":null,"price": monthlyReport.rent})
   }
   if (monthlyReport.electricity_bill){
-    sortedAdditions.push({"electricity_bill": monthlyReport.electricity_bill})
+    sortedAdditions.push({"title":"Electricity bill","date":null,"price": monthlyReport.electricity_bill})
   }
   if ( monthlyReport.water_bill){
-    sortedAdditions.push({"water_bill": monthlyReport.water_bill})
+    sortedAdditions.push({"title":"Water bill","date":null,"price": monthlyReport.water_bill})
   }
     if ( monthlyReport.gas_bill){
-    sortedAdditions.push( {"gas_bill": monthlyReport.gas_bill})
+    sortedAdditions.push( {"title":"Gas bill","date":null,"price": monthlyReport.gas_bill})
   }
 
   res
