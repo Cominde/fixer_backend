@@ -94,8 +94,6 @@ exports.setRolePermissions = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Delete existing role permissions
-  await RolePermission.deleteMany({ roleId: id });
 
   // Create new role permissions
   const rolePermissions = permissions.map((permissionKey) => ({
@@ -268,7 +266,7 @@ exports.setWorkerPermissions = asyncHandler(async (req, res, next) => {
   }
 
   // Delete existing worker permissions
-  await WorkerPermission.deleteMany({ workerId: id });
+  //  await WorkerPermission.deleteMany({ workerId: id });
 
   // Create new worker permissions
   const workerPermissions = Object.entries(permissions).map(
