@@ -1339,7 +1339,8 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
       discount = repair.discount - discountValue;
       priceAfterDiscount += discount;
     } else if (discountValue === 0) {
-      priceAfterDiscount = repair.totalPrice;
+      // test this in 25/8/2026
+      priceAfterDiscount = priceAfterDiscount;
     }
     repair.discount = discountValue;
   }
