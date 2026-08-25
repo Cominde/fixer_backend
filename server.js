@@ -32,6 +32,7 @@ const SSERoute = require("./utils/sse/sseRoute");
 const Booking = require("./routes/bookingRoute");
 const issueRoute = require("./routes/issueRoute");
 const measurementRoute = require("./routes/measurementRoute");
+const permissionRoute = require("./routes/permissionRoute");
 
 //db connection
 dbconnection();
@@ -77,6 +78,7 @@ app.use("/api/V1/SSE", SSERoute);
 app.use("/api/V1/Booking", Booking);
 app.use("/api/V1/issues", issueRoute);
 app.use("/api/V1/measurement", measurementRoute);
+app.use("/api/V1/permissions", permissionRoute);
 // ping api
 app.get("/api/ping", (req, res) => {
   res.status(200).send("Server is alive!");

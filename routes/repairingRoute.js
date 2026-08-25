@@ -16,6 +16,8 @@ const {
   searchRepairs,
 } = require("../services/repairingService");
 
+const { checkPermission } = require("../middlewares/checkPermission");
+
 /**
  * @swagger
  * tags:
@@ -133,7 +135,7 @@ const {
  *       400:
  *         description: Validation error
  */
-router.route("/").post(createRepairing).get(getAllComRepairs);
+router.route("/").post(checkPermission("repairs.add"), createRepairing).get(checkPermission("repairs.view"), getAllComRepairs);
 
 /**
  * @swagger
@@ -217,7 +219,7 @@ router.route("/").post(createRepairing).get(getAllComRepairs);
  *       400:
  *         description: Validation error
  */
-router.route("/walkIn").post(walkInRepair);
+router.route("/walkIn").post(checkPermission("repairs.add"), walkInRepair);
 
 /**
  * @swagger
@@ -312,7 +314,7 @@ router.route("/getById/:id").get(getCarRepairsByid);
  *       404:
  *         description: Repair not found
  */
-router.route("/update/:id").put(updateRepair);
+router.route("/update/:id").put(checkPermission("repairs.edit"), updateRepair);
 
 /**
  * @swagger
@@ -335,7 +337,7 @@ router.route("/update/:id").put(updateRepair);
  *       404:
  *         description: No repairs found
  */
-router.route("/gen/:generatedCode").get(getCarRepairsByGenCode);
+router.route("/gen/:generatedCode").get(checkPermission("repairs.view"), getCarRepairsByGenCode);
 
 /**
  * @swagger
@@ -358,7 +360,7 @@ router.route("/gen/:generatedCode").get(getCarRepairsByGenCode);
  *       404:
  *         description: Repair not found
  */
-router.route("/report/:id").get(getRepairsReport);
+router.route("/report/:id").get(checkPermission("repairs.view"), getRepairsReport);
 
 /**
  * @swagger
@@ -381,7 +383,7 @@ router.route("/report/:id").get(getRepairsReport);
  *       404:
  *         description: Repair not found
  */
-router.route("/delete/:id").delete(deleteRepair);
+router.route("/delete/:id").delete(checkPermission("repairs.delete"), deleteRepair);
 
 /**
  * @swagger
@@ -404,7 +406,7 @@ router.route("/delete/:id").delete(deleteRepair);
  *       404:
  *         description: No repairs found for this car number
  */
-router.route("/:carNumber").get(getCarRepairsByNumber);
+router.route("/:carNumber").get(checkPermission("repairs.view"), getCarRepairsByNumber);
 
 /**
  * @swagger
@@ -438,7 +440,7 @@ router.route("/:carNumber").get(getCarRepairsByNumber);
  *       404:
  *         description: Service not found
  */
-router.route("/:serviceId").put(updateServiceStateById);
+router.route("/:serviceId").put(checkPermission("repairs.services.manage"), updateServiceStateById);
 
 /**
  * @swagger
@@ -473,6 +475,6 @@ router.route("/:serviceId").put(updateServiceStateById);
  *       404:
  *         description: No repairs found
  */
-router.route("/search/:searchTerm").get(searchRepairs);
+router.route("/search/:searchTerm").get(checkPermission("repairs.search"), searchRepairs);
 
 module.exports = router;

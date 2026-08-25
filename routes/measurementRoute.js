@@ -11,7 +11,7 @@ const {
   acceptMeasurement,
 } = require("../services/measurementService");
 
-const authService = require("../services/authService");
+const { checkPermission } = require("../middlewares/checkPermission");
 
 /**
  * @swagger
@@ -94,8 +94,8 @@ const authService = require("../services/authService");
  */
 router
   .route("/")
-  .post(authService.protect,authService.allowedTo("admin"), createMeasurement)
-  .get(authService.protect,authService.allowedTo("admin"), getAllMeasurements);
+  .post(checkPermission("measurements.add"), createMeasurement)
+  .get(checkPermission("measurements.view"), getAllMeasurements);
 
 /**
  * @swagger
@@ -181,7 +181,7 @@ router
  */
 router
   .route("/walkIn")
-  .post(authService.protect,authService.allowedTo("admin"), walkInMeasurement);
+  .post(checkPermission("measurements.walkin"), walkInMeasurement);
 
 /**
  * @swagger
@@ -206,7 +206,7 @@ router
  */
 router
   .route("/:measurementNumber")
-  .get(authService.protect, authService.allowedTo("admin"), getMeasurementByNumber);
+  .get(checkPermission("measurements.view"), getMeasurementByNumber);
 
 /**
  * @swagger
@@ -263,8 +263,8 @@ router
  */
 router
   .route("/:id")
-  .put(authService.protect, authService.allowedTo("admin"), updateMeasurement)
-  .delete(authService.protect, authService.allowedTo("admin"), deleteMeasurement);
+  .put(checkPermission("measurements.edit"), updateMeasurement)
+  .delete(checkPermission("measurements.delete"), deleteMeasurement);
 
 /**
  * @swagger
@@ -302,6 +302,6 @@ router
  */
 router
   .route("/:id/accept")
-  .put(authService.protect, authService.allowedTo("admin"), acceptMeasurement);
+  .put(checkPermission("measurements.accept"), acceptMeasurement);
 
 module.exports = router;

@@ -6,11 +6,19 @@ const apiError = require("../utils/apiError");
 const moment = require("moment");
 const ApiFeatures = require("../utils/apiFeatures");
 const searchService = require("./searchService");
+const crypto = require("crypto");
+
+// Function to generate a random password
+const generateWorkerPassword = () => {
+  return crypto.randomBytes(6).toString("hex").toUpperCase();
+};
 // @desc add Worker
 // @Route post /api/v1/Worker
 // @access private
 exports.addWorker = asyncHandler(async (req, res) => {
-  const { name, phoneNumber, jobTitle, salary, IdNumber ,role} = req.body;
+  const { name, phoneNumber, jobTitle, salary, IdNumber, role } = req.body;
+
+  const generatedPassword = generateWorkerPassword();
 
   const newDoc = await Worker.create({
     name,
@@ -21,7 +29,9 @@ exports.addWorker = asyncHandler(async (req, res) => {
     salaryAfterProcces: salary,
     salaryAfterReword: salary,
     role,
+    generatedPassword,
   });
+
   res.status(201).json({ data: newDoc });
 });
 
@@ -29,31 +39,29 @@ exports.addWorker = asyncHandler(async (req, res) => {
 // @Route GET /api/v1/Worker
 // @access private
 exports.getAllWorkers = asyncHandler(async (req, res, next) => {
+  const documentsCounts = await Worker.countDocuments();
+  const apiFeatures = new ApiFeatures(Worker.find(), req.query)
+    .paginate(documentsCounts)
+    .filter()
+    .search()
+    .limitFields();
 
+  const { mongooseQuery, paginationResult } = apiFeatures;
+  let documents = await mongooseQuery;
 
-    const documentsCounts = await Worker.countDocuments();
-    const apiFeatures = new ApiFeatures(Worker.find(), req.query)
-      .paginate(documentsCounts)
-      .filter()
-      .search()
-      .limitFields();
+  documents = documents.sort(
+    (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+  );
+  for (let i = 0; i < documents.length; i += 1) {
+    delete documents[i]._doc.salary;
+    delete documents[i]._doc.salaryAfterProcces;
+    delete documents[i]._doc.salaryAfterReword;
+  }
 
-    const { mongooseQuery, paginationResult } = apiFeatures;
-    let documents = await mongooseQuery;
-
-    documents = documents.sort(
-      (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
-    );
-    for (let i =0 ; i < documents.length ; i +=1){
-      delete documents[i]._doc.salary;
-      delete documents[i]._doc.salaryAfterProcces;
-      delete documents[i]._doc.salaryAfterReword;
-    }
-      
-    res
-      .status(200)
-      .json({ results: documents.length, paginationResult, data: documents });
-  });
+  res
+    .status(200)
+    .json({ results: documents.length, paginationResult, data: documents });
+});
 
 // @desc Get spacific Worker
 // @Route GET /api/v1/Worker
@@ -89,7 +97,26 @@ exports.getSpacificWorker = factory.getOne(Worker);
 // @desc Update spacific Worker
 // @Route Put /api/v1/Worker
 // @access private
-exports.UpdateWorkerDetals = factory.updateOne(Worker);
+exports.UpdateWorkerDetals = asyncHandler(async (req, res, next) => {
+  if (req.body.salary) {
+    if (!req.body.salaryAfterProcces) {
+      req.body.salaryAfterProcces = req.body.salary;
+    }
+    if (!req.body.salaryAfterReword) {
+      req.body.salaryAfterReword = req.body.salary;
+    }
+  }
+  const document = await Worker.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+  });
+
+  if (!document) {
+    return next(new apiError(`No document for this id ${req.params.id}`, 404));
+  }
+  // Trigger "save" event when update document
+  document.save({ validateBeforeSave: false });
+  res.status(200).json({ data: document });
+});
 
 // @desc delte Worker
 // @Route DELTE /api/v1/Worker
@@ -127,9 +154,7 @@ exports.getWorkerWithSalaryById = asyncHandler(async (req, res, next) => {
   const worker = await Worker.findById(id);
 
   if (!worker) {
-    return next(
-      new apiError(`No worker for this id ${id}`, 404),
-    );
+    return next(new apiError(`No worker for this id ${id}`, 404));
   }
 
   res.status(200).json({ data: worker });

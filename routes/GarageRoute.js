@@ -19,6 +19,7 @@ const {
   processCarImage,
   updateCarImage,
 } = require("../middlewares/uploadImageCloud");
+const { checkPermission } = require("../middlewares/checkPermission");
 
 /**
  * @swagger
@@ -77,7 +78,7 @@ const {
  *                         type: boolean
  *                         example: false
  */
-router.route("/").get(getCars);
+router.route("/").get(checkPermission("cars.view"), getCars);
 
 /**
  * @swagger
@@ -91,7 +92,7 @@ router.route("/").get(getCars);
  *       200:
  *         description: List of cars currently in repair
  */
-router.route("/repairing").get(getRepairingCars);
+router.route("/repairing").get(checkPermission("cars.view"), getRepairingCars);
 
 /**
  * @swagger
@@ -115,7 +116,7 @@ router.route("/repairing").get(getRepairingCars);
  *                     type: string
  *                   example: ["MITSUBISHI", "BMW", "TOYOTA"]
  */
-router.route("/getCarsInDB/").get(getUniqueBrands);
+router.route("/getCarsInDB/").get(checkPermission("cars.view"), getUniqueBrands);
 
 /**
  * @swagger
@@ -163,7 +164,7 @@ router
  *       200:
  *         description: Matching cars
  */
-router.route("/search/:searchString").get(searchForallCars);
+router.route("/search/:searchString").get(checkPermission("cars.view"), searchForallCars);
 
 /**
  * @swagger
@@ -184,7 +185,7 @@ router.route("/search/:searchString").get(searchForallCars);
  *       200:
  *         description: Matching cars in repair
  */
-router.route("/search/repairing/:searchString").get(searchForRepairingCars);
+router.route("/search/repairing/:searchString").get(checkPermission("cars.view"), searchForRepairingCars);
 
 /**
  * @swagger
@@ -207,7 +208,7 @@ router.route("/search/repairing/:searchString").get(searchForRepairingCars);
  *       404:
  *         description: Car not found
  */
-router.route("/getCar/:id").get(getCar);
+router.route("/getCar/:id").get(checkPermission("cars.view"), getCar);
 
 /**
  * @swagger
@@ -262,7 +263,7 @@ router.route("/getCar/:id").get(getCar);
  *       404:
  *         description: User not found
  */
-router.route("/add/:id").post(addCar);
+router.route("/add/:id").post(checkPermission("cars.add"), addCar);
 
 /**
  * @swagger
@@ -308,8 +309,8 @@ router.route("/add/:id").post(addCar);
  *         description: Car not found
  */
 router
-  .route("/update/:id")
-  .put(uploadSingleImage("image"), updateCarImage, updateCar);
+  .route("/updateCar/:id")
+  .put(checkPermission("cars.edit"), uploadSingleImage("image"), updateCarImage, updateCar);
 
 /**
  * @swagger
@@ -332,7 +333,7 @@ router
  *       404:
  *         description: Car not found
  */
-router.route("/delete/:id").delete(deleteCar);
+router.route("/delete/:id").delete(checkPermission("cars.delete"), deleteCar);
 
 /**
  * @swagger
@@ -355,7 +356,7 @@ router.route("/delete/:id").delete(deleteCar);
  *       404:
  *         description: Car not found
  */
-router.route("/:carNumber").put(makeCarInRepair);
+router.route("/:carNumber").put(checkPermission("cars.edit"), makeCarInRepair);
 /**
  * @swagger
  * /Garage/carImg/setCarImg/:
@@ -463,5 +464,5 @@ router.route("/:carNumber").put(makeCarInRepair);
  *                   type: string
  *                   example: Internal server error
  */
-router.route("/carImg/setCarImg").put(uploadSingleImage("image"), setCarImg);
+router.route("/carImg/setCarImg").put(checkPermission("cars.image.generate"), uploadSingleImage("image"), setCarImg);
 module.exports = router;

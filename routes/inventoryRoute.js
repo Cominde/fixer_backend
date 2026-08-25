@@ -10,6 +10,8 @@ const {
   getAllUnits,
 } = require("../services/InventoryServies");
 
+const { checkPermission } = require("../middlewares/checkPermission");
+
 /**
  * @swagger
  * tags:
@@ -94,7 +96,7 @@ const {
  *       400:
  *         description: Validation error
  */
-router.route("/").get(getAllCom).post(addComponent);
+router.route("/").get(checkPermission("inventory.view"), getAllCom).post(checkPermission("inventory.add"), addComponent);
 
 /**
  * @swagger
@@ -120,7 +122,7 @@ router.route("/").get(getAllCom).post(addComponent);
  *                     type: string
  *                   example: ["لتر", "كيلو", "قطعة"]
  */
-router.route("/Units/").get(getAllUnits);
+router.route("/Units/").get(checkPermission("inventory.view"), getAllUnits);
 
 /**
  * @swagger
@@ -174,7 +176,7 @@ router.route("/Units/").get(getAllUnits);
  *       404:
  *         description: Component not found
  */
-router.route("/:id").get(getCom).put(UpdateComponent);
+router.route("/:id").get(checkPermission("inventory.view"), getCom).put(checkPermission("inventory.edit"), UpdateComponent);
 
 /**
  * @swagger
@@ -195,6 +197,6 @@ router.route("/:id").get(getCom).put(UpdateComponent);
  *       200:
  *         description: Matching inventory components
  */
-router.route("/search/:searchString").get(searchCom);
+router.route("/search/:searchString").get(checkPermission("inventory.view"), searchCom);
 
 module.exports = router;

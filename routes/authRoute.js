@@ -14,6 +14,7 @@ const {
   resetPasswordForAdmin,
   setEmailAndPassword,
   verifyLogin,
+  workerLogin,
 } = require("../services/authService");
 
 const {
@@ -460,5 +461,49 @@ router.get("/admin/passkey/list", verifyToken, listPasskeys);
  *         description: Passkey not found
  */
 router.post("/admin/passkey/revoke", verifyToken, revokePasskey);
+
+/**
+ * @swagger
+ * /auth/worker/login:
+ *   post:
+ *     summary: Worker login using phone number and generated password
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [phoneNumber, generatedPassword]
+ *             properties:
+ *               phoneNumber:
+ *                 type: string
+ *                 example: "01012345678"
+ *               generatedPassword:
+ *                 type: string
+ *                 example: "A1B2C3"
+ *     responses:
+ *       200:
+ *         description: Login successful, returns JWT token and worker data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Login successful"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     worker:
+ *                       type: object
+ *                 token:
+ *                   type: string
+ *       401:
+ *         description: Invalid phone number or password
+ */
+router.post("/worker/login", workerLogin);
 
 module.exports = router;

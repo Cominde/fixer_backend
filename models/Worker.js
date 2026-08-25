@@ -46,9 +46,13 @@ const workerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    role: {
+    roleId: {
+      type: mongoose.Schema.ObjectId,
+      ref: "Role",
+    },
+    generatedPassword: {
       type: String,
-      required:[true,"the role of the worker is required for thew system"]
+      required: [true, "the generatedPassword is required"],
     }
   },
   { timestamps: true },

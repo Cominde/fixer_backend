@@ -44,12 +44,15 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
 
   // For non-periodic repairs, get distance from last periodic repair if not provided
   let finalDistance = distance;
-  if (type === "nonPeriodic" && (distance === undefined || distance === null || distance === 0)) {
+  if (
+    type === "nonPeriodic" &&
+    (distance === undefined || distance === null || distance === 0)
+  ) {
     const lastPeriodicRepair = await Repairing.findOne({
       carNumber: carNumber,
-      type: "periodic"
+      type: "periodic",
     }).sort({ createdAt: -1 });
-    
+
     if (lastPeriodicRepair && lastPeriodicRepair.distance) {
       finalDistance = lastPeriodicRepair.distance;
     } else {
@@ -158,14 +161,17 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     }
     inventoryComponent.quantity -= quantity;
 
-    await inventoryComponent.save();
+    await inventoryComponent.save({ validateBeforeSave: false });
 
     // Check if quantity is low and send notification to admin
-    if (inventoryComponent.quantity < 5) {
+    if (inventoryComponent.quantity < inventoryComponent.alertQuantity) {
       try {
-        await sendLowQuantityNotification(inventoryComponent.name, inventoryComponent.quantity);
+        await sendLowQuantityNotification(
+          inventoryComponent.name,
+          inventoryComponent.quantity,
+        );
       } catch (error) {
-        console.error('Failed to send low quantity notification:', error);
+        console.error("Failed to send low quantity notification:", error);
       }
     }
 
@@ -291,7 +297,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   });
 
   // Increment numberOfRepairs for each technician
-  
+
   if (technicians && technicians.length > 0) {
     for (const technician of technicians) {
       const worker = await Worker.findById(technician.workerId);
@@ -455,14 +461,17 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
       );
     }
     inventoryComponent.quantity -= quantity;
-    await inventoryComponent.save();
+    await inventoryComponent.save({ validateBeforeSave: false });
 
     // Check if quantity is low and send notification to admin
-    if (inventoryComponent.quantity < 5) {
+    if (inventoryComponent.quantity < inventoryComponent.alertQuantity) {
       try {
-        await sendLowQuantityNotification(inventoryComponent.name, inventoryComponent.quantity);
+        await sendLowQuantityNotification(
+          inventoryComponent.name,
+          inventoryComponent.quantity,
+        );
       } catch (error) {
-        console.error('Failed to send low quantity notification:', error);
+        console.error("Failed to send low quantity notification:", error);
       }
     }
 
@@ -506,7 +515,7 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
     distance: distance || 0,
     technicians: technicians || [],
   });
-  
+
   // Increment numberOfRepairs for each technician
   if (technicians && technicians.length > 0) {
     for (const technician of technicians) {
@@ -517,7 +526,7 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
       }
     }
   }
-  
+
   res.status(201).json({ data: repair });
 });
 
@@ -761,33 +770,38 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
     carCodeMap[car._id.toString()] = car.generatedCode;
   });
 
-  let enrichedRepairs = repairs.map((repair) => {
-    const carCode = carCodeMap[repair.carId?.toString()];
-    const car = cars.find((car) => car._id.toString() === repair.carId?.toString());
-    if (car) {
-      return {
-        brand: car.brand,
-        category: car.category,
-        model: car.model,
-        client: repair.client,
-        priceAfterDiscount: repair.priceAfterDiscount,
-        carCode: carCode,
-        paidOn: repair.createdAt,
-        id: repair._id,
-      };
-    } else {
-      // Skip repairs without matching car instead of throwing error
-      return null;
-    }
-  }).filter(item => item !== null); // Filter out null entries
+  let enrichedRepairs = repairs
+    .map((repair) => {
+      const carCode = carCodeMap[repair.carId?.toString()];
+      const car = cars.find(
+        (car) => car._id.toString() === repair.carId?.toString(),
+      );
+      if (car) {
+        return {
+          brand: car.brand,
+          category: car.category,
+          model: car.model,
+          client: repair.client,
+          priceAfterDiscount: repair.priceAfterDiscount,
+          carCode: carCode,
+          paidOn: repair.createdAt,
+          id: repair._id,
+        };
+      } else {
+        // Skip repairs without matching car instead of throwing error
+        return null;
+      }
+    })
+    .filter((item) => item !== null); // Filter out null entries
   enrichedRepairs = enrichedRepairs.sort(
     (a, b) => new Date(b.paidOn) - new Date(a.paidOn),
   );
 
   // Add next page to paginationResult
-  paginationResult.next = paginationResult.currentPage < paginationResult.numberOfPages
-    ? paginationResult.currentPage + 1
-    : null;
+  paginationResult.next =
+    paginationResult.currentPage < paginationResult.numberOfPages
+      ? paginationResult.currentPage + 1
+      : null;
 
   res.status(200).json({
     results: enrichedRepairs.length,
@@ -801,15 +815,29 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
 // @access private
 exports.getCarRepairsByid = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
+  const { type } = req.body;
   const car = await Car.findById(id);
 
   if (!car || car.length === 0) {
+    repair = await Repairing.findById(id);
+    if (repair) {
+      return res.status(200).json({ data: [repair] });
+    }
+
     return next(new apiError(`Can't car with this id ${id}`, 404));
   }
 
-  const repairing = await Repairing.find({
-    carId: car._id,
-  });
+  let query = { carId: car._id };
+
+  // Filter by type if specified
+  if (type === "periodic") {
+    query.type = "periodic";
+  } else if (type === "nonPeriodic") {
+    query.type = "nonPeriodic";
+  }
+  // If type is "all" or not specified, return all repairs (no filter)
+
+  const repairing = await Repairing.find(query);
   if (!repairing || repairing.length === 0) {
     return next(new apiError(`Can't find services for this car  ${id}`, 404));
   }
@@ -841,7 +869,7 @@ exports.getCarRepairsByGenCode = asyncHandler(async (req, res, next) => {
     carId: { $in: car._id },
   });
   const apiFeatures = new ApiFeatures(
-    Repairing.find({ carId: { $in:  car._id  } }),
+    Repairing.find({ carId: { $in: car._id } }),
     req.query,
   )
     .paginate(documentsCount)
@@ -858,9 +886,10 @@ exports.getCarRepairsByGenCode = asyncHandler(async (req, res, next) => {
   );
 
   // Add next page to paginationResult
-  paginationResult.next = paginationResult.currentPage < paginationResult.numberOfPages
-    ? paginationResult.currentPage + 1
-    : null;
+  paginationResult.next =
+    paginationResult.currentPage < paginationResult.numberOfPages
+      ? paginationResult.currentPage + 1
+      : null;
 
   // Respond with paginated repair data
   res.status(200).json({
@@ -885,28 +914,26 @@ exports.getRepairsReport = asyncHandler(async (req, res, next) => {
   const carInfo = await Car.findById(Repair.carId);
 
   if (!carInfo) {
-    if(!Repair.carId){
-        const info = {
-    name: Repair.client,
-    //phone: userInfo.phoneNumber,
-    carNumber: Repair.carNumber,
-    brand: Repair.brand,
-    category: Repair.category,
-    model: Repair.model,
-    distances: Repair.distance,
-    note1: Repair.Note1,
-    note2: Repair.Note2,
-  };
-  res.status(200).json({
-    repair: Repair,
-    data: info,
-  });
+    if (!Repair.carId) {
+      const info = {
+        name: Repair.client,
+        //phone: userInfo.phoneNumber,
+        carNumber: Repair.carNumber,
+        brand: Repair.brand,
+        category: Repair.category,
+        model: Repair.model,
+        distances: Repair.distance,
+        note1: Repair.Note1,
+        note2: Repair.Note2,
+      };
+      res.status(200).json({
+        repair: Repair,
+        data: info,
+      });
     }
     return next(
       new apiError(`Can't find car with this id ${Repair.carId}`, 404),
     );
-    
-
   }
 
   const userInfo = await User.findOne({ name: { $in: carInfo.ownerName } });
@@ -1040,7 +1067,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
             inventory.quantity += repairComponent.quantity;
             diffPrice = inventory.price * repairComponent.quantity;
             updateTotalPrice -= diffPrice;
-            await inventory.save();
+            await inventory.save({ validateBeforeSave: false });
           } else {
             return next(
               new apiError(
@@ -1092,7 +1119,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
             repairComponent.quantity = quantity;
           }
         }
-        await inventory.save();
+        await inventory.save({ validateBeforeSave: false });
         await repairComponent.save();
       } else {
         const inventoryComponent = await Inventory.findById(componentId);
@@ -1129,14 +1156,17 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
         }
 
         inventoryComponent.quantity -= quantity;
-        await inventoryComponent.save();
+        await inventoryComponent.save({ validateBeforeSave: false });
 
         // Check if quantity is low and send notification to admin
-        if (inventoryComponent.quantity < 5) {
+        if (inventoryComponent.quantity < inventoryComponent.alertQuantity) {
           try {
-            await sendLowQuantityNotification(inventoryComponent.name, inventoryComponent.quantity);
+            await sendLowQuantityNotification(
+              inventoryComponent.name,
+              inventoryComponent.quantity,
+            );
           } catch (error) {
-            console.error('Failed to send low quantity notification:', error);
+            console.error("Failed to send low quantity notification:", error);
           }
         }
 
@@ -1309,7 +1339,8 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
       discount = repair.discount - discountValue;
       priceAfterDiscount += discount;
     } else if (discountValue === 0) {
-      priceAfterDiscount = repair.totalPrice;
+      // test this in 25/8/2026
+      priceAfterDiscount = priceAfterDiscount;
     }
     repair.discount = discountValue;
   }
@@ -1383,7 +1414,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
 
       if (workerId) {
         const repairTechnician = repair.technicians?.find(
-          (t) => t.workerId?.toString() === workerId
+          (t) => t.workerId?.toString() === workerId,
         );
 
         if (repairTechnician) {
@@ -1395,7 +1426,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
               await worker.save();
             }
             repair.technicians = repair.technicians.filter(
-              (t) => t.workerId?.toString() !== workerId
+              (t) => t.workerId?.toString() !== workerId,
             );
           } else {
             // Update technician name if provided
@@ -1437,35 +1468,34 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
   repair.totalPrice = totalPrice;
   repair.priceAfterDiscount = priceAfterDiscount;
   if (req.body.technicians && req.body.technicians.length > 0) {
-    for (const { workerId, name ,remove } of req.body.technicians) {
+    for (const { workerId, name, remove } of req.body.technicians) {
       if (!workerId) {
-        return next(new apiError("must send the worker id ", 400),)
-      };
-        const existRepairWorkers = repair.technicians.find(
-          (comp) => comp.workerId.toString() === workerId,
-        );
-        if (existRepairWorkers) {
-          if (remove) {
-            repair.technicians = repair.technicians.filter(
-              (comp) => comp.workerId.toString() !== workerId,
-            );
-            const worker = await Worker.findById(workerId);
-          if (worker) {
-          worker.numberOfRepairs = Math.max(0, worker.numberOfRepairs - 1);
-          await worker.save();
-          }
-          }
-        }
-        else {
-          
+        return next(new apiError("must send the worker id ", 400));
+      }
+      const existRepairWorkers = repair.technicians.find(
+        (comp) => comp.workerId.toString() === workerId,
+      );
+      if (existRepairWorkers) {
+        if (remove) {
+          repair.technicians = repair.technicians.filter(
+            (comp) => comp.workerId.toString() !== workerId,
+          );
           const worker = await Worker.findById(workerId);
           if (worker) {
-            worker.numberOfRepairs += 1;
+            worker.numberOfRepairs = Math.max(0, worker.numberOfRepairs - 1);
             await worker.save();
           }
-          repair.technicians.push({ workerId, name });
         }
-    }}
+      } else {
+        const worker = await Worker.findById(workerId);
+        if (worker) {
+          worker.numberOfRepairs += 1;
+          await worker.save();
+        }
+        repair.technicians.push({ workerId, name });
+      }
+    }
+  }
 
   await repair.save();
 
@@ -1505,7 +1535,7 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
       const inventoryItem = await Inventory.findOne({ componentId });
       if (inventoryItem) {
         inventoryItem.quantity += quantity;
-        await inventoryItem.save();
+        await inventoryItem.save({ validateBeforeSave: false });
       } else {
         new apiError(`there is no component with this id ${componentId}`, 404);
       }
@@ -1517,6 +1547,15 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
     if (car) {
       car.repairing_id = null;
       await car.save();
+    }
+  }
+  if (repair.technicians && repair.technicians.length > 0) {
+    for (const technician of repair.technicians) {
+      const worker = await Worker.findById(technician.workerId);
+      if (worker) {
+        worker.numberOfRepairs -= 1;
+        await worker.save();
+      }
     }
   }
   await repair.deleteOne();
@@ -1550,21 +1589,24 @@ exports.searchRepairs = asyncHandler(async (req, res, next) => {
     }
     // 2. Try to find by client name using searchService (case-insensitive partial match)
     else {
-      const { documents: repairsByClient, paginationResult: clientPagination } = await searchService({
-        Model: Repairing,
-        searchString: searchTerm,
-        searchFields: ["client"],
-        page,
-        limit,
-        sort: { createdAt: -1 },
-      });
+      const { documents: repairsByClient, paginationResult: clientPagination } =
+        await searchService({
+          Model: Repairing,
+          searchString: searchTerm,
+          searchFields: ["client"],
+          page,
+          limit,
+          sort: { createdAt: -1 },
+        });
       if (repairsByClient.length > 0) {
         repairs = repairsByClient;
         paginationResult = clientPagination;
       }
       // 3. Try to find by carNumber (exact match)
       else {
-        const repairsByCarNumber = await Repairing.find({ carNumber: searchTerm });
+        const repairsByCarNumber = await Repairing.find({
+          carNumber: searchTerm,
+        });
         if (repairsByCarNumber.length > 0) {
           repairs = repairsByCarNumber;
           paginationResult = {
@@ -1592,19 +1634,20 @@ exports.searchRepairs = asyncHandler(async (req, res, next) => {
 
     if (!repairs || repairs.length === 0) {
       return next(
-        new apiError(`No repairs found for search term: ${searchTerm}`, 404)
+        new apiError(`No repairs found for search term: ${searchTerm}`, 404),
       );
     }
 
     // Sort by creation date (newest first)
     repairs = repairs.sort(
-      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
     );
 
     // Add next page to paginationResult
-    paginationResult.next = paginationResult.currentPage < paginationResult.numberOfPages
-      ? paginationResult.currentPage + 1
-      : null;
+    paginationResult.next =
+      paginationResult.currentPage < paginationResult.numberOfPages
+        ? paginationResult.currentPage + 1
+        : null;
 
     res.status(200).json({
       results: repairs.length,

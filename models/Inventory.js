@@ -21,8 +21,10 @@ const inventorySchema = new mongoose.Schema(
     },
     Code: {
       type: String,
-      required: [true, "the Code is required"],
-      unique: [true, "the Code is used before"],
+    },
+    alertQuantity: {
+      type: Number,
+      required: [true, "the alertQuantity is required "],
     },
   },
   // مفيده ليا لو عايز اجيب ال منتج الاحدث بالوقت

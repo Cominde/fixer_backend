@@ -18,6 +18,8 @@ const {
   addWorkerValidator,
 } = require("../utils/validator/phoneNumberValidator");
 
+const { checkPermission } = require("../middlewares/checkPermission");
+
 /**
  * @swagger
  * tags:
@@ -85,7 +87,7 @@ const {
  *       400:
  *         description: Validation error - invalid phone number
  */
-router.route("/").get(getAllWorkers).post(addWorkerValidator, addWorker);
+router.route("/").get(checkPermission("workers.view"), getAllWorkers).post(checkPermission("workers.add"), addWorkerValidator, addWorker);
 
 /**
  * @swagger
@@ -162,9 +164,9 @@ router.route("/").get(getAllWorkers).post(addWorkerValidator, addWorker);
  */
 router
   .route("/:id")
-  .delete(deleteWorker)
-  .post(moneyFromToworker)
-  .get(getSpacificWorker);
+  .delete(checkPermission("workers.delete"), deleteWorker)
+  .post(checkPermission("workers.money.add"), moneyFromToworker)
+  .get(checkPermission("workers.view"), getSpacificWorker);
 
 /**
  * @swagger
@@ -185,7 +187,7 @@ router
  *       200:
  *         description: Matching workers
  */
-router.route("/search/:searchString").get(searchForWorker);
+router.route("/search/:searchString").get(checkPermission("workers.view"), searchForWorker);
 
 /**
  * @swagger
@@ -227,7 +229,7 @@ router.route("/search/:searchString").get(searchForWorker);
  *                       salaryAfterReword:
  *                         type: number
  */
-router.route("/salary").get(getAllWorkersWithSalary);
+router.route("/salary").get(checkPermission("workers.salary.view"), getAllWorkersWithSalary);
 
 /**
  * @swagger
@@ -250,7 +252,7 @@ router.route("/salary").get(getAllWorkersWithSalary);
  *       404:
  *         description: Worker not found
  */
-router.route("/salary/:id").get(getWorkerWithSalaryById);
+router.route("/salary/:id").get(checkPermission("workers.salary.view"), getWorkerWithSalaryById);
 
 /**
  * @swagger
@@ -285,7 +287,7 @@ router.route("/salary/:id").get(getWorkerWithSalaryById);
  *       404:
  *         description: Worker not found
  */
-router.route("/withoutNID/:id").put(UpdateWorkerDetals);
+router.route("/withoutNID/:id").put(checkPermission("workers.edit"), UpdateWorkerDetals);
 
 /**
  * @swagger
@@ -319,6 +321,6 @@ router.route("/withoutNID/:id").put(UpdateWorkerDetals);
  *       404:
  *         description: Worker not found
  */
-router.route("/:IdNumber").put(UpdateWorkerDetalsByNID);
+router.route("/:IdNumber").put(checkPermission("workers.edit"), UpdateWorkerDetalsByNID);
 
 module.exports = router;

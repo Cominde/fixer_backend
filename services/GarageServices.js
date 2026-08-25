@@ -246,7 +246,68 @@ exports.getRepairingCars = asyncHandler(async (req, res, next) => {
   const { mongooseQuery, paginationResult } = apiFeatures;
   let documents = await mongooseQuery;
 
-  if (!documents) {
+  // Get repairs where complete = false and no generatedCode
+  const incompleteRepairs = await Repairing.find({
+    complete: false,
+    $or: [
+      { generatedCode: null },
+      { generatedCode: { $exists: false } },
+      { generatedCode: "" }
+    ]
+  });
+
+  // Get car information for incomplete repairs
+  const carIds = incompleteRepairs.map(repair => repair.carId);
+  const carsFromRepairs = await Car.find({ _id: { $in: carIds } });
+  const carMap = new Map(carsFromRepairs.map(car => [car._id.toString(), car]));
+
+  // Combine documents (avoid duplicates)
+  const existingCarIds = new Set(documents.map(doc => doc._id.toString()));
+  
+  incompleteRepairs.forEach(repair => {
+    const carId = repair.carId ? repair.carId.toString() : null;
+    
+    if (carId && carMap.has(carId)) {
+      // If car exists, add it (avoid duplicates)
+      const car = carMap.get(carId);
+      if (!existingCarIds.has(carId)) {
+        documents.push(car);
+        existingCarIds.add(carId);
+      }
+    } else {
+      // If no car exists, transform repair to car-like structure
+      const carLikeDoc = {
+        _id: repair._id,
+        ownerName: repair.client || "Unknown",
+        carNumber: repair.carNumber || "",
+        brand: repair.brand || "",
+        category: repair.category || "",
+        model: repair.model || "",
+        State: "Repair",
+        generatedCode: repair.genId || "",
+        repairing: true,
+        repairing_id: repair._id,
+        createdAt: repair.createdAt,
+        // Add other fields as needed for display
+        color: "",
+        chassisNumber: "",
+        motorNumber: "",
+        periodicRepairs: 0,
+        nonPeriodicRepairs: 0,
+        completedServicesRatio: repair.completedServicesRatio || 0,
+        nextRepairDate: repair.expectedDate || null,
+        lastRepairDate: null,
+        nextRepairDistance: repair.distance || null,
+        distances: repair.distance || null,
+        componentState: [],
+        image: "https://res.cloudinary.com/dcj7fkdub/image/upload/v1777995080/def_ljjwcj.png",
+        imagePublicId: "cars/def_img"
+      };
+      documents.push(carLikeDoc);
+    }
+  });
+
+  if (!documents || documents.length === 0) {
     return next(new apiError(`There are no cars in repairs`, 404));
   }
 

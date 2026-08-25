@@ -2,7 +2,7 @@
 <br>
 
 # Fixer Backend
-The backend service for Fixer, a platform that provides reliable currency exchange rates, currency conversions, and other financial data services.
+The backend service for Fixer, a car repair management system with JWT authentication and role-based permissions.
 
 ## Table of Contents
 1. Overview
@@ -11,19 +11,23 @@ The backend service for Fixer, a platform that provides reliable currency exchan
 4. Environment Variables
 5. Usage
 6. API Endpoints
-7. Contributing
-8. License
+7. Authentication
+8. Contributing
+9. License
 
 ## Overview
-Fixer Backend is built using Node.js and Express, providing RESTful APIs for currency-related functionalities. The platform integrates with external APIs to deliver accurate exchange rates and conversion services. It is designed to be scalable and efficient for handling financial data.
+Fixer Backend is built using Node.js and Express, providing RESTful APIs for car repair management. The system includes JWT authentication, role-based permissions, and support for walk-in repairs without car registration.
 
 ## Features
-Real-time currency exchange rates: Get the latest exchange rates from various sources.
-Currency conversion: Convert amounts between different currencies with ease.
-Historical rates: Retrieve exchange rates for specific dates in the past.
-Automated updates: Rates are updated periodically from external providers.
-Secure and scalable: Designed with security best practices and scalability in mind.
-Installation
+- Car and repair management
+- JWT authentication for all API endpoints
+- Role-based permission system
+- Walk-in repairs (repairs without generatedCode/carId)
+- Image upload with fallback validation
+- Real-time repair tracking
+- Worker login system
+
+## Installation
 To set up the backend locally, follow these steps:
 
 1. Clone the repository: ```git clone https://github.com/Cominde/fixer_backend.git```
@@ -35,48 +39,63 @@ To set up the backend locally, follow these steps:
 ## Environment Variables
 The following environment variables are required to run the backend service:
 
-API_KEY: Your API key for the external currency exchange rate provider.
 DB_HOST: Host of the database.
 DB_USER: Username for the database.
 DB_PASS: Password for the database.
 DB_NAME: Name of the database.
 PORT: Port on which the server will run.
-Create a .env file in the root directory and fill in the required variables.
+JWT_SECRET: Secret key for JWT token generation.
+JWT_EXPIRES_IN: JWT token expiration time.
 
-Example .env file:
-````
-API_KEY=your_api_key
-DB_HOST=localhost
-DB_USER=root
-DB_PASS=password
-DB_NAME=fixer_db
-PORT=3000
-````
+Create a .env file in the root directory and fill in the required variables.
 
 ## Usage
 Run the backend server in development mode:
 ```npm run dev```
-This will start the backend server at http://localhost:3000.
+
+## Authentication
+**IMPORTANT: All API endpoints require JWT authentication.**
+
+Include the JWT token in the Authorization header:
+```
+Authorization: Bearer <your_jwt_token>
+```
 
 ## API Endpoints
-Below are some example API endpoints provided by the Fixer Backend:
 
-GET /api/rates: Retrieve the latest currency exchange rates.
+### Authentication
+- POST /api/V1/auth/login - User login
+- POST /api/V1/auth/register - User registration
+- POST /api/V1/auth/worker-login - Worker login
 
-POST /api/convert: Convert amounts between currencies.
+### Cars
+- GET /api/V1/Garage - Get all cars
+- GET /api/V1/Garage/:id - Get specific car by ID
+- POST /api/V1/Garage - Add new car
+- PUT /api/V1/Garage/updateCar/:id - Update car
+- DELETE /api/V1/Garage/:id - Delete car
+- GET /api/V1/Garage/repairing - Get repairing cars
 
-GET /api/historical?date=YYYY-MM-DD: Retrieve historical exchange rates for a specific date.
+### Repairs
+- GET /api/V1/repairing/getById/:id - Get repairs by car ID
+- POST /api/V1/repairing - Create new repair
+- PUT /api/V1/repairing/:id - Update repair
+- GET /api/V1/repairing/walk-in - Get walk-in repairs
 
-For a full list of available endpoints and their usage, refer to the API documentation (if available).
+### Roles & Permissions
+- GET /api/V1/roles - Get all roles
+- POST /api/V1/roles - Create new role
+- PUT /api/V1/roles/:id - Update role
+- GET /api/V1/permissions - Get all permissions
 
 ## Contributing
 We welcome contributions! Please follow these steps to contribute:
 
-## Fork the repository.
-1. Create a new branch: ```git checkout -b feature-name```.
-2. Make your changes and commit them: ```git commit -m 'Add some feature'```.
-3. Push to the branch: ```git push origin feature-name```.
-4. Open a pull request.
+1. Fork the repository.
+2. Create a new branch: ```git checkout -b feature-name```.
+3. Make your changes and commit them: ```git commit -m 'Add some feature'```.
+4. Push to the branch: ```git push origin feature-name```.
+5. Open a pull request.
    
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.

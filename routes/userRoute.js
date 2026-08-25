@@ -30,6 +30,7 @@ const {
 
 const authService = require("../services/authService");
 const { saveFCMToken } = require("../services/notificationFire");
+const { checkPermission } = require("../middlewares/checkPermission");
 const router = express.Router();
 
 /**
@@ -38,11 +39,6 @@ const router = express.Router();
  *   name: Users
  *   description: User management (Admin only)
  */
-
-router.use(authService.protect);
-
-// Admin only routes
-router.use(authService.allowedTo("admin"));
 
 /**
  * @swagger
@@ -86,6 +82,7 @@ router.use(authService.allowedTo("admin"));
  */
 router.put(
   "/changePassword/:id",
+  checkPermission("users.edit"),
   changeUserPasswordValidator,
   changeUserPassword,
 );
@@ -173,8 +170,8 @@ router.put(
  */
 router
   .route("/")
-  .get(getUsers)
-  .post(uploadSingleImage("image"), processUserImage, createUser);
+  .get(checkPermission("users.view"), getUsers)
+  .post(checkPermission("users.edit"), uploadSingleImage("image"), processUserImage, createUser);
 
 /**
  * @swagger
@@ -250,14 +247,15 @@ router
  */
 router
   .route("/:id")
-  .get(getUserValidator, getUser)
+  .get(checkPermission("users.view"), getUserValidator, getUser)
   .put(
+    checkPermission("users.edit"),
     uploadSingleImage("image"),
     UpdateUserImage,
     updateUserValidator,
     updateUser,
   )
-  .delete(deleteUserValidator, deleteUser);
+  .delete(checkPermission("users.delete"), deleteUserValidator, deleteUser);
 
 /**
  * @swagger
@@ -314,7 +312,7 @@ router.route("/saveFCMToken/:userId").put(saveFCMToken);
  *       404:
  *         description: User not found
  */
-router.route("/active/:id").put(makeUserUnactive);
+router.route("/active/:id").put(checkPermission("users.edit"), makeUserUnactive);
 
 /**
  * @swagger
@@ -335,7 +333,7 @@ router.route("/active/:id").put(makeUserUnactive);
  *       200:
  *         description: Matching users
  */
-router.route("/search/:searchString").get(searchForUser);
+router.route("/search/:searchString").get(checkPermission("users.view"), searchForUser);
 
 /**
  * @swagger
@@ -364,6 +362,6 @@ router.route("/search/:searchString").get(searchForUser);
  *                   type: string
  *                   example: "C182"
  */
-router.route("/carCode/:clientType").get(suggestNextCodeNumber);
+router.route("/carCode/:clientType").get(checkPermission("users.view"), suggestNextCodeNumber);
 
 module.exports = router;

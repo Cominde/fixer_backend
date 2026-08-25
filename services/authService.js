@@ -19,6 +19,7 @@ const {
 const createToken = require("../utils/createToken");
 
 const User = require("../models/userModel");
+const Worker = require("../models/Worker");
 const otpGenerator = require("otp-generator");
 const admin = require("../config/fireBase.js");
 const { notifyClient } = require("../utils/sse/sseService.js");
@@ -566,5 +567,39 @@ exports.setEmailAndPassword = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     status: "Success",
     message: "Email and Password reset successful",
+  });
+});
+
+// @desc    Worker login using phone number and generated password
+// @route   POST /api/v1/auth/worker/login
+// @access  Public
+exports.workerLogin = asyncHandler(async (req, res, next) => {
+  const { phoneNumber, generatedPassword } = req.body;
+
+  if (!phoneNumber || !generatedPassword) {
+    return next(new ApiError("Phone number and password are required", 400));
+  }
+
+  // Find worker by phone number and password
+  const worker = await Worker.findOne({
+    phoneNumber,
+    generatedPassword,
+  }).populate('roleId');
+
+  if (!worker) {
+    return next(new ApiError("Incorrect phone number or password", 401));
+  }
+
+  // Generate token
+  const token = createToken(worker._id);
+
+  // Remove password from response
+  const workerResponse = { ...worker._doc };
+  delete workerResponse.generatedPassword;
+
+  res.status(200).json({
+    message: "Login successful",
+    data: { worker: workerResponse },
+    token,
   });
 });
