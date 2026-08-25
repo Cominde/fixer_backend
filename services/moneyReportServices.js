@@ -13,9 +13,16 @@ function getUTCDate(year, month) {
 
 exports.createReport = asyncHandler(async (req, res, next) => {
   let totalGain = 0;
+  let totaloutcome = 0;
+  let rent = undefined;
+  let electricity_bill = undefined;
+  let water_bill = undefined;
+  let gas_bill = undefined;
+
   const { year, month } = req.body;
 
   const date = getUTCDate(year, month - 1);
+  const currentDate = new Date();
 
   const oldReport = await MonthlyMoneyReport.findOne({
     date: {
@@ -23,10 +30,32 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       $lt: getUTCDate(year, month),
     },
   });
-
-  if (oldReport) {
+  if(oldReport){
+  if(oldReport.rent){
+   rent = oldReport.rent
+  }
+    if(oldReport.electricity_bill){
+   electricity_bill = oldReport.electricity_bill
+  }
+    if(oldReport.water_bill){
+   water_bill = oldReport.water_bill
+  }
+    if(oldReport.gas_bill){
+   gas_bill = oldReport.gas_bill
+  } }
+  if ((currentDate.getMonth()>date.getMonth() || currentDate.getFullYear() > date.getFullYear() ) && oldReport) {
     res.status(200).json({ data: oldReport });
-  } else {
+  } else if (currentDate.getMonth() < date.getMonth() || currentDate.getFullYear() < date.getFullYear()) {
+    return next(new apiError("the date that you enter will coming soon , if we live",400))
+  }
+  else{
+    let monthlyReport = await MonthlyMoneyReport.findOneAndDelete({
+    date: {
+      $gte: date,
+      $lt: getUTCDate(year, month),
+    },
+    });
+
     const repairs = await Repair.find({
       createdAt: {
         $gte: date,
@@ -38,7 +67,6 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       (total, repair) => total + repair.priceAfterDiscount,
       0
     );
-
     const salariesAggregate = await Worker.aggregate([
       {
         $group: {
@@ -50,14 +78,33 @@ exports.createReport = asyncHandler(async (req, res, next) => {
 
     const totalSalaries =
       salariesAggregate.length > 0 ? salariesAggregate[0].totalSalaries : 0;
-
     totalGain = totalIncome - totalSalaries;
-
+    totaloutcome = totalSalaries
+    if(rent){
+      totaloutcome = totaloutcome +  rent;
+      totalGain = totalGain - rent;
+      }
+    if(electricity_bill){
+      totaloutcome = totaloutcome +  electricity_bill;
+      totalGain = totalGain - electricity_bill;
+      }
+    if(water_bill){
+      totaloutcome = totaloutcome +  water_bill;
+      totalGain = totalGain - water_bill;
+      }
+    if(gas_bill){
+      totaloutcome = totaloutcome +  gas_bill;
+      totalGain = totalGain - gas_bill;
+      }
     const Money = await MonthlyMoneyReport.create({
       date,
-      outCome: totalSalaries,
+      outCome: totaloutcome,
       encome: totalIncome,
       totalGain,
+      electricity_bill,
+      water_bill,
+      gas_bill,
+      rent,
     });
 
     if (!Money) {
@@ -89,8 +136,9 @@ exports.put_the_bills_rent = asyncHandler(async (req, res, next) => {
   ) {
     return next(new apiError("The values must be positive", 400));
   }
-
+  console.log(year_month)
   let [year, month] = year_month.split("_").map(Number);
+  console.log(year,month)
   if (isNaN(month) || isNaN(year)) {
     return next(new apiError("Invalid month and year", 400));
   }
@@ -211,6 +259,7 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
 
   const additions = monthlyReport ? monthlyReport.additions : [];
 
+
   const sortedRepairs = repairs.sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
   );
@@ -222,6 +271,18 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
   const sortedAdditions = additions.sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
   );
+    if (monthlyReport.rent ){
+    sortedAdditions.push({"rent": monthlyReport.rent})
+  }
+  if (monthlyReport.electricity_bill){
+    sortedAdditions.push({"electricity_bill": monthlyReport.electricity_bill})
+  }
+  if ( monthlyReport.water_bill){
+    sortedAdditions.push({"water_bill": monthlyReport.water_bill})
+  }
+    if ( monthlyReport.gas_bill){
+    sortedAdditions.push( {"gas_bill": monthlyReport.gas_bill})
+  }
 
   res
     .status(200)

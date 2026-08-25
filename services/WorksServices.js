@@ -89,7 +89,27 @@ exports.getSpacificWorker = factory.getOne(Worker);
 // @desc Update spacific Worker
 // @Route Put /api/v1/Worker
 // @access private
-exports.UpdateWorkerDetals = factory.updateOne(Worker);
+exports.UpdateWorkerDetals = asyncHandler(async (req, res, next) => {
+  if(req.body.salary){
+    if(!req.body.salaryAfterProcces){
+     req.body.salaryAfterProcces = req.body.salary;}
+    if(!req.body.salaryAfterReword){
+     req.body.salaryAfterReword = req.body.salary;}
+     
+  }
+    const document = await Worker.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
+
+    if (!document) {
+      return next(
+        new apiError(`No document for this id ${req.params.id}`, 404),
+      );
+    }
+    // Trigger "save" event when update document
+    document.save({ validateBeforeSave: false });
+    res.status(200).json({ data: document });
+  });
 
 // @desc delte Worker
 // @Route DELTE /api/v1/Worker
