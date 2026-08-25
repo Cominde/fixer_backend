@@ -1,10 +1,12 @@
 const asyncHandler = require("express-async-handler");
+const jwt = require("jsonwebtoken");
 const ApiError = require("../utils/apiError");
 const Role = require("../models/Role");
 const RolePermission = require("../models/RolePermission");
 const WorkerPermission = require("../models/WorkerPermission");
 const Permission = require("../models/Permission");
 const registry = require("../utils/permissions/registry");
+const Worker = require("../models/Worker");
 
 /**
  * Get full permission registry
@@ -61,15 +63,15 @@ exports.setRolePermissions = asyncHandler(async (req, res, next) => {
   }, []);
 
   const invalidPermissions = permissions.filter(
-    (key) => !allPermissionKeys.includes(key)
+    (key) => !allPermissionKeys.includes(key),
   );
 
   if (invalidPermissions.length > 0) {
     return next(
       new ApiError(
         `Invalid permission keys: ${invalidPermissions.join(", ")}`,
-        400
-      )
+        400,
+      ),
     );
   }
 
@@ -95,7 +97,6 @@ exports.setRolePermissions = asyncHandler(async (req, res, next) => {
  */
 exports.getWorkerPermissions = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-  const Worker = require("../models/Worker");
 
   // Validate worker exists
   const worker = await Worker.findById(id).populate("roleId");
@@ -137,10 +138,33 @@ exports.getWorkerPermissions = asyncHandler(async (req, res, next) => {
  * Get current worker's permissions (role defaults + overrides)
  */
 exports.getMyPermissions = asyncHandler(async (req, res, next) => {
-  const Worker = require("../models/Worker");
-
   // Get worker ID from req.user (set by checkPermission middleware)
-  const workerId = req.user._id;
+  let token;
+  
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Bearer ")
+    ) {
+      token = req.headers.authorization.split(" ")[1];
+    }
+  
+    if (!token) {
+      return next(
+        new ApiError(
+          "You are not login, Please login to get access this route",
+          401,
+        ),
+      );
+    }
+  
+    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+    console.log(decoded)
+    //check if user exists
+    const workerId =
+      decoded.userId && decoded.userId.userId
+        ? decoded.userId.userId
+        : decoded.userId;
+    console.log(workerId)
 
   // Validate worker exists
   const worker = await Worker.findById(workerId).populate("roleId");
@@ -201,7 +225,6 @@ exports.setWorkerPermissions = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const { permissions } = req.body; // Object: { "workers.delete": true, "workers.view": false }
 
-  const Worker = require("../models/Worker");
 
   // Validate worker exists
   const worker = await Worker.findById(id);
@@ -215,15 +238,15 @@ exports.setWorkerPermissions = asyncHandler(async (req, res, next) => {
   }, []);
 
   const invalidPermissions = Object.keys(permissions).filter(
-    (key) => !allPermissionKeys.includes(key)
+    (key) => !allPermissionKeys.includes(key),
   );
 
   if (invalidPermissions.length > 0) {
     return next(
       new ApiError(
         `Invalid permission keys: ${invalidPermissions.join(", ")}`,
-        400
-      )
+        400,
+      ),
     );
   }
 
@@ -236,7 +259,7 @@ exports.setWorkerPermissions = asyncHandler(async (req, res, next) => {
       workerId: id,
       permissionKey,
       granted,
-    })
+    }),
   );
 
   await WorkerPermission.insertMany(workerPermissions);
