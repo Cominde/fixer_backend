@@ -91,6 +91,71 @@ router.route("/").get(checkPermission("workers.view"), getAllWorkers).post(check
 
 /**
  * @swagger
+ * /Worker/salary:
+ *   get:
+ *     summary: Get all workers with salary information
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of all workers with salary details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 results:
+ *                   type: number
+ *                 paginationResult:
+ *                   type: object
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       phoneNumber:
+ *                         type: string
+ *                       jobTitle:
+ *                         type: string
+ *                       salary:
+ *                         type: number
+ *                       salaryAfterProcces:
+ *                         type: number
+ *                       salaryAfterReword:
+ *                         type: number
+ */
+router.route("/salary").get(checkPermission("workers.salary.view"), getAllWorkersWithSalary);
+
+/**
+ * @swagger
+ * /Worker/salary/{id}:
+ *   get:
+ *     summary: Get specific worker with salary by ID
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "6734de56e41091cfb6b02f7e"
+ *     responses:
+ *       200:
+ *         description: Worker details with salary information
+ *       404:
+ *         description: Worker not found
+ */
+router.route("/salary/:id").get(checkPermission("workers.salary.view"), getWorkerWithSalaryById);
+
+/**
+ * @swagger
  * /Worker/{id}:
  *   get:
  *     summary: Get a specific worker by ID
@@ -188,71 +253,6 @@ router
  *         description: Matching workers
  */
 router.route("/search/:searchString").get(checkPermission("workers.view"), searchForWorker);
-
-/**
- * @swagger
- * /Worker/salary:
- *   get:
- *     summary: Get all workers with salary information
- *     tags: [Workers]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of all workers with salary details
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 results:
- *                   type: number
- *                 paginationResult:
- *                   type: object
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       _id:
- *                         type: string
- *                       name:
- *                         type: string
- *                       phoneNumber:
- *                         type: string
- *                       jobTitle:
- *                         type: string
- *                       salary:
- *                         type: number
- *                       salaryAfterProcces:
- *                         type: number
- *                       salaryAfterReword:
- *                         type: number
- */
-router.route("/salary").get(checkPermission("workers.salary.view"), getAllWorkersWithSalary);
-
-/**
- * @swagger
- * /Worker/salary/{id}:
- *   get:
- *     summary: Get specific worker with salary by ID
- *     tags: [Workers]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         example: "6734de56e41091cfb6b02f7e"
- *     responses:
- *       200:
- *         description: Worker details with salary information
- *       404:
- *         description: Worker not found
- */
-router.route("/salary/:id").get(checkPermission("workers.salary.view"), getWorkerWithSalaryById);
 
 /**
  * @swagger
