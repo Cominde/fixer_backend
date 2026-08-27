@@ -42,10 +42,11 @@ exports.createBookingRequest = asyncHandler(async (req, res, next) => {
   });
 
   const notificationResult = await notifyAdmins.notifyAdmins({
+    user_name: user.name,
+    carNumber: car.carNumber,
+    maintenanceRequest: maintenanceRequest,
     title: "new repair request",
     body: `the user ${user.name} ask for new repair request for car with number ${carNumber}`,
-    requestId: maintenanceRequest._id,
-    type: "maintenance_request",
   });
 
   res.status(201).json({
