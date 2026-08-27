@@ -176,6 +176,12 @@ exports.notifyAdmins = async ({
 
   if (admins.length === 0 || !admin.apps.length) return;
 
+  // Check if maintenanceRequest exists before accessing its properties
+  if (!maintenanceRequest || !maintenanceRequest._id) {
+    console.error('maintenanceRequest is undefined or missing _id');
+    return;
+  }
+
   const tokens = admins.map((a) => a.fcmToken);
   const message = {
     notification: {
