@@ -9,14 +9,24 @@ const {
   getmonthWork,
   deleteReport,
 } = require("../services/moneyReportServices");
-
+const authService = require("../services/authService");
 /**
  * @swagger
  * tags:
  *   name: Monthly Report
  *   description: Monthly financial reports management
  */
+/**
+ * @swagger
+ * tags:
+ *   name: Monthly Report
+ *   description: Monthly financial reports management (Admin only)
+ */
 
+router.use(authService.protect);
+
+// Admin only routes
+router.use(authService.allowedTo("admin"));
 /**
  * @swagger
  * /MonthlyReport:

@@ -6,6 +6,8 @@ const {
   getSpacificRequest,
   cancelRequest,
   getallUserRequests,
+  getallRequests,
+  ReplyofRequest
 } = require("../services/BookingService");
 
 const authService = require("../services/authService"); // عدّل المسار حسب مشروعك
@@ -78,6 +80,17 @@ router.route("/").post(createBookingRequest);
  *         description: List of user's maintenance requests
  */
 router.route("/requests").get(getallUserRequests);
+/**
+ * @swagger
+ * /booking/requests:
+ *   get:
+ *     summary: Get all booking requests
+ *     tags: [Booking]
+ *     responses:
+ *       200:
+ *         description: List of users maintenance requests
+ */
+router.route("/allrequests").get(getallRequests);
 
 /**
  * @swagger
@@ -122,5 +135,41 @@ router.route("/requests").get(getallUserRequests);
  *         description: Request already cancelled or not in a cancellable state
  */
 router.route("/:id").get(getSpacificRequest).put(cancelRequest);
+/**
+ * @swagger
+ * /booking/admin/{id}:
+ *   put:
+ *     summary: replay a booking request
+ *     tags: [Booking]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "6734de56e41091cfb6b02f7e"
+ *       - in: body
+ *         name: replay
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: 
+ *             acceptedExample:
+ *               summary: accepted the request
+ *               value: "accepted"
+ *             rejectedExample:
+ *               summary: rejected the request
+ *               value: "rejected"
+ *     responses:
+ *       200:
+ *         description: Request reply successfully 
+ *       404:
+ *         description: Request not found
+ *       400:
+ *         description: Request already cancelled 
+ */
+router.route("/admin/:id").put(ReplyofRequest);
 
 module.exports = router;

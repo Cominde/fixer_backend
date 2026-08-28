@@ -3,7 +3,7 @@ const asyncHandler = require("express-async-handler");
 const apiError = require("../utils/apiError");
 const User = require("../models/userModel");
 const Car = require("../models/Car");
-const notifyAdmins = require("./notificationFire");
+const {notifyAdmins, sendTheReplyOnBookingRequest} = require("./notificationFire");
 
 // @desc    create Booking request
 // @route   POST /api/v1/Booking/
@@ -71,6 +71,41 @@ exports.getSpacificRequest = asyncHandler(async (req, res, next) => {
   res.status(200).json({ success: true, data: request });
 });
 
+// @desc    reply of the request
+// @route   PUT /api/v1/Booking//admin/:id
+// @access  Private
+exports.ReplyofRequest = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const {status} = req.body;
+
+  const request = await Booking.findById(id);
+
+  if (!request) {
+    return next(new apiError(`Can't find request for this id ${id}`, 404));
+  }
+
+  if (request.status === "cancelled") {
+    return next(new apiError(`this request is already cancelled`, 400));
+  }
+
+  request.status = status;
+  await request.save();
+
+
+
+  const notificationResult = await sendTheReplyOnBookingRequest(
+    request.user.toString(),
+    request.status
+  );
+  res.status(200).json({
+    success: true,
+    message: `Maintenance request ${status} successfully`,
+    data: request,
+    notification: notificationResult,
+  });
+});
+
+
 // @desc    cancel the request
 // @route   PUT /api/v1/Booking/:id
 // @access  Private
@@ -127,5 +162,13 @@ exports.cancelRequest = asyncHandler(async (req, res, next) => {
 exports.getallUserRequests = asyncHandler(async (req, res, next) => {
   const userId = req.user._id;
   const requests = await Booking.find({ user: userId }).sort({ createdAt: -1 });
+  res.status(200).json({ success: true, requests });
+});
+
+// @desc   get all user requests
+// @route   GET /api/v1/Booking/allrequests/
+// @access  Private
+exports.getallRequests = asyncHandler(async (req, res, next) => {
+  const requests = await Booking.find({}).sort({ createdAt: -1 });
   res.status(200).json({ success: true, requests });
 });

@@ -237,6 +237,25 @@ exports.notifyAdmins = async ({
     };
   }
 };
+// @desc send notification user with the reply on the booking request
+// @Route post /api/V1/booking/admin/:id
+// @access private
+
+exports.sendTheReplyOnBookingRequest = async (userId,status) => {
+  const user = await User.findById(userId);
+  if (!user?.fcmToken) return;
+
+  await admin.messaging().send({
+    token: user.fcmToken,
+    notification: {
+      title: "the reply on the booking request",
+      body: `the reply on the booking request is ${status} , for more information call the center`,
+    },
+    data: { type: "booking request reply", status: String(status) },
+    android: { priority: "high" },
+    apns: { payload: { aps: { sound: "default" } } },
+  });
+};
 
 // ─── Low Inventory Quantity Warning ──────────────────────────────
 exports.sendLowQuantityNotification = async (componentName, quantity) => {
