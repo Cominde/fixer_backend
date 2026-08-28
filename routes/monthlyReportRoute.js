@@ -8,6 +8,7 @@ const {
   addorSubthing,
   getmonthWork,
   deleteReport,
+  getOrganizationReport,
 } = require("../services/moneyReportServices");
 const authService = require("../services/authService");
 /**
@@ -218,5 +219,87 @@ router.route("/home/work/:year_month").get(getmonthWork);
  *         description: Report not found
  */
 router.route("/delete/:year_month").delete(deleteReport);
+
+/**
+ * @swagger
+ * /MonthlyReport/organization:
+ *   get:
+ *     summary: Get organization report data for a date range
+ *     tags: [Monthly Report]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: from
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         example: "2026-08-01"
+ *       - in: query
+ *         name: to
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         example: "2026-08-28"
+ *     responses:
+ *       200:
+ *         description: Organization report data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     range:
+ *                       type: object
+ *                       properties:
+ *                         from:
+ *                           type: string
+ *                         to:
+ *                           type: string
+ *                     technicians:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           jobTitle:
+ *                             type: string
+ *                           repairCount:
+ *                             type: number
+ *                           repairLabel:
+ *                             type: string
+ *                     lowStock:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           quantity:
+ *                             type: number
+ *                           alertQuantity:
+ *                             type: number
+ *                           isLowStock:
+ *                             type: boolean
+ *                     income:
+ *                       type: number
+ *                     totalGain:
+ *                       type: number
+ *                     totalExpenses:
+ *                       type: number
+ *       400:
+ *         description: from and to dates are required
+ */
+router.route("/organization").get(getOrganizationReport);
 
 module.exports = router;

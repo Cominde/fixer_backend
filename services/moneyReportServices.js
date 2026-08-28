@@ -1,6 +1,7 @@
 const MonthlyMoneyReport = require("../models/MonthlyMoneyReport");
 const Repair = require("../models/repairingModel");
 const Worker = require("../models/Worker");
+const Inventory = require("../models/Inventory");
 //const slugify = require("slugify");
 const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
@@ -337,5 +338,93 @@ exports.deleteReport = asyncHandler(async (req, res, next) => {
     return next(new apiError(`No Report for this date ${dateM}`, 404));
   }
 
-  res.status(204).send();
+  res.status(200).json({ message: "Report deleted successfully" });
+});
+
+// @desc get organization report data
+// @Route get /api/V1/MonthlyReport/organization
+// @access private (admin)
+exports.getOrganizationReport = asyncHandler(async (req, res, next) => {
+  const { from, to } = req.query;
+
+  if (!from || !to) {
+    return next(new apiError("from and to dates are required", 400));
+  }
+
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+  toDate.setHours(23, 59, 59, 999);
+
+  // Get all workers (technicians)
+  const workers = await Worker.find({}).select("name jobTitle");
+
+  // Count repairs per worker within the date range
+  const workersWithRepairCount = await Promise.all(
+    workers.map(async (worker) => {
+      const repairCount = await Repair.countDocuments({
+        worker: worker._id,
+        createdAt: { $gte: fromDate, $lte: toDate },
+      });
+      return {
+        _id: worker._id,
+        name: worker.name,
+        jobTitle: worker.jobTitle,
+        repairCount: repairCount,
+        repairLabel: `${repairCount} repairs`,
+      };
+    })
+  );
+
+  // Get low stock inventory items
+  const inventoryItems = await Inventory.find({});
+  const lowStockItems = inventoryItems
+    .filter((item) => item.quantity <= item.alertQuantity)
+    .map((item) => ({
+      _id: item._id,
+      name: item.name,
+      quantity: item.quantity,
+      alertQuantity: item.alertQuantity,
+      isLowStock: true,
+    }));
+
+  // Calculate monthly income and gain for the date range
+  const repairsInRange = await Repair.find({
+    createdAt: { $gte: fromDate, $lte: toDate },
+  });
+
+  const totalIncome = repairsInRange.reduce((sum, repair) => {
+    return sum + (repair.totalPrice || 0);
+  }, 0);
+
+  // Get workers' salaries for the period
+  const totalSalaries = workers.reduce((sum, worker) => {
+    return sum + (worker.salary || 0);
+  }, 0);
+
+  // Get monthly report for the period (if exists)
+  const monthlyReport = await MonthlyMoneyReport.findOne({
+    date: { $gte: fromDate, $lte: toDate },
+  });
+
+  let totalExpenses = totalSalaries;
+  if (monthlyReport) {
+    if (monthlyReport.rent) totalExpenses += monthlyReport.rent;
+    if (monthlyReport.electricity_bill) totalExpenses += monthlyReport.electricity_bill;
+    if (monthlyReport.water_bill) totalExpenses += monthlyReport.water_bill;
+    if (monthlyReport.gas_bill) totalExpenses += monthlyReport.gas_bill;
+    if (monthlyReport.bills) totalExpenses += monthlyReport.bills;
+  }
+
+  const totalGain = totalIncome - totalExpenses;
+
+  res.status(200).json({
+    data: {
+      range: { from, to },
+      technicians: workersWithRepairCount,
+      lowStock: lowStockItems,
+      income: totalIncome,
+      totalGain: totalGain,
+      totalExpenses: totalExpenses,
+    },
+  });
 });
