@@ -16,6 +16,7 @@ const { searchService, searchCarService } = require("./searchService");
 const { send } = require("process");
 const { STATES } = require("mongoose");
 const { normalizeCarNumber } = require("../utils/carNumberCheck");
+const apiError = require("../utils/apiError");
 // Function to generate a unique 8-digit code
 const generateUniqueCode = async () => {
   let isUnique = false;
@@ -242,7 +243,23 @@ exports.createUser = asyncHandler(async (req, res, next) => {
 // @desc    Update specific user
 // @route   PUT /api/v1/users/:id
 // @access  Private/Admin
-exports.updateUser = factory.updateOne(User);
+exports.updateUser =   asyncHandler(async (req, res, next) => {
+    if(req.body.role){
+      return next(new apiError("can`t change the role of the user",403))
+    }
+    const document = await User.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
+
+    if (!document) {
+      return next(
+        new apiError(`No document for this id ${req.params.id}`, 404),
+      );
+    }
+    // Trigger "save" event when update document
+    document.save({ validateBeforeSave: false });
+    res.status(200).json({ data: document });
+  });
 /*exports.updateUser = asyncHandler(async (req, res, next) => {
   const document = await User.findByIdAndUpdate(
     req.params.id,
