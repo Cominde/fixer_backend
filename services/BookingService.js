@@ -41,7 +41,7 @@ exports.createBookingRequest = asyncHandler(async (req, res, next) => {
     car_number: car.carNumber,
   });
 
-  const notificationResult = await notifyAdmins.notifyAdmins({
+  const notificationResult = await notifyAdmins({
     user_name: user.name,
     carNumber: car.carNumber,
     maintenanceRequest: maintenanceRequest,
@@ -141,7 +141,7 @@ exports.cancelRequest = asyncHandler(async (req, res, next) => {
   request.status = "cancelled";
   await request.save();
 
-  const notificationResult = await notifyAdmins.notifyAdmins({
+  const notificationResult = await notifyAdmins({
     title: "Request cancelled",
     body: `the user ${request.user_name} cancelled the repair request for car with number ${request.car_number}`,
     requestId: request._id,
