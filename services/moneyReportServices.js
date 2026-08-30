@@ -358,11 +358,11 @@ exports.getOrganizationReport = asyncHandler(async (req, res, next) => {
   // Get all workers (technicians)
   const workers = await Worker.find({}).select("name jobTitle");
 
-  // Count repairs per worker within the date range
+  // Count repairs per worker within the date range using technicians array
   const workersWithRepairCount = await Promise.all(
     workers.map(async (worker) => {
       const repairCount = await Repair.countDocuments({
-        worker: worker._id,
+        technicians: { $elemMatch: { workerId: worker._id } },
         createdAt: { $gte: fromDate, $lte: toDate },
       });
       return {

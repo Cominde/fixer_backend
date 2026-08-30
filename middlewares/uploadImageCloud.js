@@ -84,13 +84,51 @@ exports.processCarImage = async (req, res, next) => {
   if (!req.file || !req.file.buffer) return next();
 
   try {
-    const bgRemovedBuffer = await removeBgExternal(req.file.buffer);
-
     const { brand, category, model, color } = req.body;
     const fileName = `${brand}.${category}.${model}.${color}`
       .toLowerCase()
       .replace(/\s+/g, "_");
     const publicId = `Cars/${fileName}`;
+
+    // Check if a car with the same brand, category, model, and color already has an image
+    const existingCarWithImage = await Car.findOne({
+      brand: brand,
+      category: category,
+      model: model,
+      color: color,
+      image: { $exists: true, $ne: null },
+      imagePublicId: { $exists: true, $ne: null },
+    });
+
+    if (existingCarWithImage) {
+      console.log(`♻️ Reusing existing image for ${brand} ${category} ${model} ${color}`);
+      // Update all cars with the same brand, category, model, and color to use the existing image
+      await Car.updateMany(
+        {
+          brand: brand,
+          category: category,
+          model: model,
+          color: color,
+        },
+        {
+          $set: {
+            image: existingCarWithImage.image,
+            imagePublicId: existingCarWithImage.imagePublicId,
+          },
+        },
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Reused existing car image and DB updated successfully",
+        image: existingCarWithImage.image,
+        imagePublicId: existingCarWithImage.imagePublicId,
+      });
+    }
+
+    // No existing image found, proceed with upload
+    console.log(`📤 No existing image found, uploading new image for ${brand} ${category} ${model} ${color}`);
+    const bgRemovedBuffer = await removeBgExternal(req.file.buffer);
 
     try {
       await cloudinary.uploader.destroy(publicId, { resource_type: "image" });
@@ -99,6 +137,7 @@ exports.processCarImage = async (req, res, next) => {
       // Image didn't exist — no problem, continue
       console.log(`ℹ️ No existing image to delete: ${publicId}`);
     }
+
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
@@ -109,7 +148,6 @@ exports.processCarImage = async (req, res, next) => {
           transformation: [
             { effect: "trim:10" },
             { width: 1920, height: 1080, crop: "fill", gravity: "center"},
-            ,
           ],
         },
         (err, uploadResult) => {
@@ -168,17 +206,41 @@ exports.updateCarImage = async (req, res, next) => {
       .replace(/\s+/g, "_");
 
     const expectedPublicId = `Cars/${fileName}`;
+
+    // 3. Check if a car with the same brand, category, model, and color already has an image
+    const existingCarWithImage = await Car.findOne({
+      brand: brand,
+      category: category,
+      model: model,
+      color: color,
+      image: { $exists: true, $ne: null },
+      imagePublicId: { $exists: true, $ne: null },
+    });
+
+    // if (existingCarWithImage) {
+    //   console.log(`♻️ Reusing existing image for ${brand} ${category} ${model} ${color}`);
+    //   // Reuse the existing image
+    //   req.body.image = existingCarWithImage.image;
+    //   req.body.imagePublicId = existingCarWithImage.imagePublicId;
+    //   return next();
+    // }
+
+    // 4. No existing image found, proceed with upload
+    console.log(`📤 No existing image found, uploading new image for ${brand} ${category} ${model} ${color}`);
     const bgRemovedBuffer = await removeBgExternal(req.file.buffer);
-    // 3. Delete existing image if it exists on Cloudinary
+
+    // 5. Delete existing image if it exists on Cloudinary (for this specific car)
     try {
-      await cloudinary.uploader.destroy(expectedPublicId, { resource_type: "image" });
-      console.log(`🗑️ Old image deleted: ${expectedPublicId}`);
+      if (car.imagePublicId) {
+        await cloudinary.uploader.destroy(car.imagePublicId, { resource_type: "image" });
+        console.log(`🗑️ Old image deleted: ${car.imagePublicId}`);
+      }
     } catch (err) {
       // Image didn't exist — no problem, continue
-      console.log(`ℹ️ No existing image to delete: ${expectedPublicId}`);
+      console.log(`ℹ️ No existing image to delete: ${car.imagePublicId}`);
     }
 
-    // 4. Upload new image to Cloudinary
+    // 6. Upload new image to Cloudinary
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
@@ -198,11 +260,12 @@ exports.updateCarImage = async (req, res, next) => {
       stream.end(bgRemovedBuffer);
     });
 
-    // 5. Set image to req.body for updateCar middleware
+    // 7. Set image to req.body for updateCar middleware
     req.body.image = result.secure_url;
     req.body.imagePublicId = result.public_id;
     next();
   } catch (err) {
+    console.log(err)
     next(new ApiError(`Error updating car image: ${err.message}`, 500));
   }
 };
