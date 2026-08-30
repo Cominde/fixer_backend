@@ -597,9 +597,54 @@ exports.workerLogin = asyncHandler(async (req, res, next) => {
   const workerResponse = { ...worker._doc };
   delete workerResponse.generatedPassword;
 
+  // Get worker permissions with endpoints
+  const RolePermission = require("../models/RolePermission");
+  const WorkerPermission = require("../models/WorkerPermission");
+  const registry = require("../utils/permissions/registry");
+
+  // Get role permissions
+  let rolePermissions = {};
+  if (worker.roleId) {
+    const rolePerms = await RolePermission.find({ roleId: worker.roleId._id });
+    rolePermissions = rolePerms.reduce((acc, rp) => {
+      acc[rp.permissionKey] = true;
+      return acc;
+    }, {});
+  }
+
+  // Get worker overrides
+  const workerOverrides = await WorkerPermission.find({ workerId: worker._id });
+  const overrides = workerOverrides.reduce((acc, wp) => {
+    acc[wp.permissionKey] = wp.granted;
+    return acc;
+  }, {});
+
+  // Calculate effective permissions
+  const effective = { ...rolePermissions };
+  for (const [key, granted] of Object.entries(overrides)) {
+    effective[key] = granted;
+  }
+
+  // Build response with endpoints from registry
+  const permissionsWithEndpoints = {};
+  for (const [module, moduleData] of Object.entries(registry)) {
+    for (const [key, permData] of Object.entries(moduleData.permissions)) {
+      if (effective[key]) {
+        permissionsWithEndpoints[key] = {
+          label: permData.label,
+          endpoints: permData.endpoints || [],
+        };
+      }
+    }
+  }
+
   res.status(200).json({
     message: "Login successful",
-    data: { worker: workerResponse },
+    data: { 
+      worker: workerResponse,
+      permissions: permissionsWithEndpoints,
+      role: worker.roleId?.name || null,
+    },
     token,
   });
 });

@@ -3,7 +3,7 @@ module.exports = {
     label: "Workers Management",
     permissions: {
       'workers.view': { 
-        label: 'View all workers',
+        label: 'View all workers (without salary)',
         endpoints: [
           { method: 'GET', path: '/api/V1/Worker' },
           { method: 'GET', path: '/api/V1/Worker/:id', params: ['id'] },
