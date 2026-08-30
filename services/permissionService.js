@@ -269,11 +269,19 @@ exports.setWorkerPermissions = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const { permissions } = req.body; // Object: { "workers.delete": true, "workers.view": false }
 
-
   // Validate worker exists
   const worker = await Worker.findById(id);
   if (!worker) {
     return next(new ApiError("Worker not found", 404));
+  }
+
+  // If permissions is empty object, delete all worker permissions
+  if (!permissions || Object.keys(permissions).length === 0) {
+    await WorkerPermission.deleteMany({ workerId: id });
+    return res.status(200).json({
+      message: "All worker permissions deleted successfully",
+      data: [],
+    });
   }
 
   // Validate all permission keys exist in registry
@@ -294,22 +302,24 @@ exports.setWorkerPermissions = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Delete existing worker permissions
-  //  await WorkerPermission.deleteMany({ workerId: id });
-
-  // Create new worker permissions
-  const workerPermissions = Object.entries(permissions).map(
+  // Use bulkWrite with replaceOne to handle duplicates
+  const bulkOperations = Object.entries(permissions).map(
     ([permissionKey, granted]) => ({
-      workerId: id,
-      permissionKey,
-      granted,
+      replaceOne: {
+        filter: { workerId: id, permissionKey },
+        replacement: { workerId: id, permissionKey, granted },
+        upsert: true,
+      },
     }),
   );
 
-  await WorkerPermission.insertMany(workerPermissions);
+  await WorkerPermission.bulkWrite(bulkOperations);
+
+  // Get updated permissions
+  const updatedPermissions = await WorkerPermission.find({ workerId: id });
 
   res.status(200).json({
     message: "Worker permissions updated successfully",
-    data: workerPermissions,
+    data: updatedPermissions,
   });
 });

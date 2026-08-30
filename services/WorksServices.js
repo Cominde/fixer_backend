@@ -32,7 +32,13 @@ exports.addWorker = asyncHandler(async (req, res) => {
     generatedPassword,
   });
 
-  res.status(201).json({ data: newDoc });
+  // Remove salary fields from response
+  const docResponse = newDoc.toObject();
+  delete docResponse.salary;
+  delete docResponse.salaryAfterProcces;
+  delete docResponse.salaryAfterReword;
+
+  res.status(201).json({ data: docResponse });
 });
 
 // @desc Get list of Worker
@@ -71,7 +77,7 @@ exports.searchForWorker = asyncHandler(async (req, res, next) => {
   const { documents, paginationResult } = await searchService({
     Model: Worker,
     searchString,
-    select: "name IdNumber phoneNumber jobTitle salary salaryAfterProcces",
+    select: "name IdNumber phoneNumber jobTitle",
   });
   if (!documents || documents.length === 0) {
     return next(
@@ -92,7 +98,22 @@ exports.searchForWorker = asyncHandler(async (req, res, next) => {
 // @desc get spacific Worker
 // @Route GET /api/v1/Worker
 // @access private
-exports.getSpacificWorker = factory.getOne(Worker);
+exports.getSpacificWorker = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const worker = await Worker.findById(id);
+
+  if (!worker) {
+    return next(new apiError(`No document for this id ${id}`, 404));
+  }
+
+  // Remove salary fields from response
+  const workerResponse = worker.toObject();
+  delete workerResponse.salary;
+  delete workerResponse.salaryAfterProcces;
+  delete workerResponse.salaryAfterReword;
+
+  res.status(200).json({ data: workerResponse });
+});
 
 // @desc Update spacific Worker
 // @Route Put /api/v1/Worker
@@ -115,7 +136,14 @@ exports.UpdateWorkerDetals = asyncHandler(async (req, res, next) => {
   }
   // Trigger "save" event when update document
   document.save({ validateBeforeSave: false });
-  res.status(200).json({ data: document });
+  
+  // Remove salary fields from response
+  const documentResponse = document.toObject();
+  delete documentResponse.salary;
+  delete documentResponse.salaryAfterProcces;
+  delete documentResponse.salaryAfterReword;
+  
+  res.status(200).json({ data: documentResponse });
 });
 
 // @desc delte Worker
@@ -177,7 +205,13 @@ exports.UpdateWorkerDetalsByNID = asyncHandler(async (req, res, next) => {
     );
   }
 
-  res.status(201).json({ data: worker });
+  // Remove salary fields from response
+  const workerResponse = worker.toObject();
+  delete workerResponse.salary;
+  delete workerResponse.salaryAfterProcces;
+  delete workerResponse.salaryAfterReword;
+
+  res.status(201).json({ data: workerResponse });
 });
 
 // @desc set reword or loans or penalty for worker
@@ -263,5 +297,11 @@ exports.moneyFromToworker = asyncHandler(async (req, res, next) => {
 
   await worker.save();
 
-  res.status(200).json({ data: worker });
+  // Remove salary fields from response
+  const workerResponse = worker.toObject();
+  delete workerResponse.salary;
+  delete workerResponse.salaryAfterProcces;
+  delete workerResponse.salaryAfterReword;
+
+  res.status(200).json({ data: workerResponse });
 });

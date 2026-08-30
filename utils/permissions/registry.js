@@ -122,11 +122,11 @@ module.exports = {
       },
       'repairs.technicians.manage': { 
         label: 'Manage technicians in repairs',
-        endpoints: []
+        endpoints: [ { method: 'PUT', path: '/api/V1/repairing/update/:id', params: ['id'] },]
       },
       'repairs.components.manage': { 
         label: 'Manage components in repairs',
-        endpoints: []
+        endpoints: [ { method: 'PUT', path: '/api/V1/repairing/update/:id', params: ['id'] },]
       },
       'repairs.services.manage': { 
         label: 'Manage services in repairs',
