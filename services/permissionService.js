@@ -270,7 +270,7 @@ exports.setWorkerPermissions = asyncHandler(async (req, res, next) => {
   const { permissions } = req.body; // Object: { "workers.delete": true, "workers.view": false }
 
   // Validate worker exists
-  const worker = await Worker.findById(id);
+  const worker = await Worker.findById(id).populate("roleId");
   if (!worker) {
     return next(new ApiError("Worker not found", 404));
   }
@@ -302,18 +302,59 @@ exports.setWorkerPermissions = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Use bulkWrite with replaceOne to handle duplicates
-  const bulkOperations = Object.entries(permissions).map(
-    ([permissionKey, granted]) => ({
-      replaceOne: {
-        filter: { workerId: id, permissionKey },
-        replacement: { workerId: id, permissionKey, granted },
-        upsert: true,
-      },
-    }),
-  );
+  // Get role permissions to compare
+  let rolePermissions = {};
+  if (worker.roleId) {
+    const rolePerms = await RolePermission.find({ roleId: worker.roleId._id });
+    rolePermissions = rolePerms.reduce((acc, rp) => {
+      acc[rp.permissionKey] = true; // Role permissions are always granted
+      return acc;
+    }, {});
+  }
 
-  await WorkerPermission.bulkWrite(bulkOperations);
+  // Filter out permissions that match role defaults
+  const permissionsToStore = {};
+  const permissionsToDelete = [];
+
+  for (const [permissionKey, granted] of Object.entries(permissions)) {
+    const roleHasPermission = rolePermissions[permissionKey] === true;
+    
+    // If role has permission and worker is also granted, delete the override (use role default)
+    if (roleHasPermission && granted === true) {
+      permissionsToDelete.push(permissionKey);
+    } 
+    // If role doesn't have permission and worker is also denied, delete the override (use role default)
+    else if (!roleHasPermission && granted === false) {
+      permissionsToDelete.push(permissionKey);
+    }
+    // Otherwise, store the override (differs from role default)
+    else {
+      permissionsToStore[permissionKey] = granted;
+    }
+  }
+
+  // Delete permissions that match role defaults
+  if (permissionsToDelete.length > 0) {
+    await WorkerPermission.deleteMany({
+      workerId: id,
+      permissionKey: { $in: permissionsToDelete },
+    });
+  }
+
+  // Use bulkWrite with replaceOne for permissions that differ from role defaults
+  if (Object.keys(permissionsToStore).length > 0) {
+    const bulkOperations = Object.entries(permissionsToStore).map(
+      ([permissionKey, granted]) => ({
+        replaceOne: {
+          filter: { workerId: id, permissionKey },
+          replacement: { workerId: id, permissionKey, granted },
+          upsert: true,
+        },
+      }),
+    );
+
+    await WorkerPermission.bulkWrite(bulkOperations);
+  }
 
   // Get updated permissions
   const updatedPermissions = await WorkerPermission.find({ workerId: id });
