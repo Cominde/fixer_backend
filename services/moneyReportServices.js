@@ -15,10 +15,12 @@ function getUTCDate(year, month) {
 exports.createReport = asyncHandler(async (req, res, next) => {
   let totalGain = 0;
   let totaloutcome = 0;
+  let totalIncome = 0;
   let rent = undefined;
   let electricity_bill = undefined;
   let water_bill = undefined;
   let gas_bill = undefined;
+  let additions = [];
 
   const { year, month } = req.body;
 
@@ -43,6 +45,9 @@ exports.createReport = asyncHandler(async (req, res, next) => {
     }
     if (oldReport.gas_bill) {
       gas_bill = oldReport.gas_bill;
+    }
+    if (oldReport.additions) {
+      additions = oldReport.additions;
     }
   }
   if (
@@ -76,7 +81,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       },
     });
 
-    const totalIncome = repairs.reduce(
+      totalIncome = repairs.reduce(
       (total, repair) => total + repair.priceAfterDiscount,
       0,
     );
@@ -109,6 +114,19 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       totaloutcome = totaloutcome + gas_bill;
       totalGain = totalGain - gas_bill;
     }
+    if(additions.length>0){
+      for (let i=0 ; i< additions.length; i++){
+        if(additions[i].price <0){
+          totaloutcome = totaloutcome - additions[i].price;
+          totalGain = totalGain + additions[i].price;
+          console.log(`total gain ${totalGain} , and the add.price ${additions[i].price}`)
+        }else{
+          totalIncome = totalIncome + additions[i].price;
+          totalGain = totalGain + additions[i].price;
+          console.log(`total gain ${totalGain} , and the add.price ${additions[i].price}`)
+        }
+      }
+    }
     const Money = await MonthlyMoneyReport.create({
       date,
       outCome: totaloutcome,
@@ -118,6 +136,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       water_bill,
       gas_bill,
       rent,
+      additions,
     });
 
     if (!Money) {
