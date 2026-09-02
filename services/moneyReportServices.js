@@ -277,8 +277,7 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
       $lt: endDate,
     },
   }).select("client brand category model createdAt priceAfterDiscount");
-  //const workers = await Worker.find().select("name salary");
-  const workers = await Worker.find().select("name");
+  const workers = await Worker.find().select("name salary");
 
   const monthlyReport = await MonthlyMoneyReport.findOne({
     date: {
