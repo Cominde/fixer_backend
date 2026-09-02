@@ -12,6 +12,7 @@ const { normalizeCarNumber } = require("../utils/carNumberCheck");
 const { sendLowQuantityNotification } = require("./notificationFire");
 const asyncHandler = require("express-async-handler");
 const { body } = require("express-validator");
+const { ObjectId } = require("bson");
 
 // @desc create a repairing
 // @Route POST /api/v1/repairing
@@ -182,6 +183,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       name: inventoryComponent.name,
       quantity: quantity,
       price: componentPrice,
+      _id : new ObjectId(id)
     });
   }
   /*if (type == "periodic") {
@@ -1067,10 +1069,11 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
       const repairComponent = repair.component.find(
         (comp) => comp._id.toString() === componentId,
       );
-      const inventory = await Inventory.findOne({
-        name: repairComponent.name,
-      });
+      
       if (repairComponent) {
+        const inventory = await Inventory.findOne({
+          _id: repairComponent._id,
+        });
         if (quantity === 0) {
           if (inventory) {
             inventory.quantity += repairComponent.quantity;
@@ -1186,6 +1189,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
           name: inventoryComponent.name,
           quantity: quantity,
           price: componentPrice,
+          _id: new ObjectId(componentId)
         });
       }
     }
