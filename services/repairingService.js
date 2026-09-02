@@ -1064,7 +1064,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
     repair.genId = req.body.genId;
   }
   if (req.body.components && req.body.components.length > 0) {
-    for (const { id: componentId, quantity } of req.body.components) {
+    for (const { id: componentId, quantity,remove } of req.body.components) {
       //search in the repair components
       const repairComponent = repair.component.find(
         (comp) => comp._id.toString() === componentId,
@@ -1074,7 +1074,7 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
         const inventory = await Inventory.findOne({
           _id: repairComponent._id,
         });
-        if (quantity === 0) {
+        if (remove) {
           if (inventory) {
             inventory.quantity += repairComponent.quantity;
             diffPrice = inventory.price * repairComponent.quantity;
