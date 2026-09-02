@@ -788,8 +788,17 @@ exports.getAllComRepairs = asyncHandler(async (req, res, next) => {
           id: repair._id,
         };
       } else {
-        // Skip repairs without matching car instead of throwing error
-        return null;
+        // return the walk-in repairs
+        return {
+          brand: repair.brand,
+          category: repair.category,
+          model: repair.model,
+          client: repair.client,
+          priceAfterDiscount: repair.priceAfterDiscount,
+          carCode: null,
+          paidOn: repair.createdAt,
+          id: repair._id,
+        };
       }
     })
     .filter((item) => item !== null); // Filter out null entries
