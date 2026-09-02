@@ -710,37 +710,32 @@ exports.updateServiceStateById = asyncHandler(async (req, res, next) => {
   // Update car data if all services are completed
   let car = await Car.findById(repairingDoc.carId);
 
-  if (!car) {
-    return next(
-      new apiError(`No car found for number ${repairingDoc.carNumber}`, 404),
-    );
-  }
+  if (car) {
+    if (repairingDoc.complete) {
+      const currentDate = new Date();
+      car.lastRepairDate = currentDate;
 
-  if (repairingDoc.complete) {
-    const currentDate = new Date();
-    car.lastRepairDate = currentDate;
-
-    if (car.nextRepairDate) {
-      const parsedNextPerDate = new Date(car.nextRepairDate);
-      if (currentDate < parsedNextPerDate) {
-        car.State = "Good";
+      if (car.nextRepairDate) {
+        const parsedNextPerDate = new Date(car.nextRepairDate);
+        if (currentDate < parsedNextPerDate) {
+          car.State = "Good";
+        } else {
+          car.State = "Need to check";
+        }
       } else {
-        car.State = "Need to check";
+        car.State = "Good";
       }
     } else {
-      car.State = "Good";
+      car.State = "Repair";
+      car.repairing = true;
+      car.repairing_id = repairingDoc._id;
     }
-  } else {
-    car.State = "Repair";
-    car.repairing = true;
-    car.repairing_id = repairingDoc._id;
+
+    car.completedServicesRatio = repairingDoc.completedServicesRatio;
+
+    // Save the car document
+    await car.save();
   }
-
-  car.completedServicesRatio = repairingDoc.completedServicesRatio;
-
-  // Save the car document
-  await car.save();
-
   res.status(200).json({
     data: service,
     message: `Service state updated to ${newState}`,
