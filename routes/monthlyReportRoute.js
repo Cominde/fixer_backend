@@ -8,6 +8,7 @@ const {
   addorSubthing,
   getmonthWork,
   deleteReport,
+  deleteAddition,
   getOrganizationReport,
 } = require("../services/moneyReportServices");
 const authService = require("../services/authService");
@@ -219,6 +220,35 @@ router.route("/home/work/:year_month").get(getmonthWork);
  *         description: Report not found
  */
 router.route("/delete/:year_month").delete(deleteReport);
+
+/**
+ * @swagger
+ * /MonthlyReport/addition/:year_month/:additionId:
+ *   delete:
+ *     summary: Delete a specific addition from a monthly report
+ *     tags: [Monthly Report]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: year_month
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "2025_01"
+ *       - in: path
+ *         name: additionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "507f1f77bcf86cd799439011"
+ *     responses:
+ *       200:
+ *         description: Addition deleted successfully
+ *       404:
+ *         description: Report or addition not found
+ */
+router.route("/addition/:year_month/:additionId").delete(deleteAddition);
 
 /**
  * @swagger

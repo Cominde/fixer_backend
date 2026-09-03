@@ -12,6 +12,8 @@ const {
   getSpacificWorker,
   getAllWorkersWithSalary,
   getWorkerWithSalaryById,
+  resetSalaryFieldsOnFirstDay,
+  deleteWorkerFinancialRecord,
 } = require("../services/WorksServices");
 
 const {
@@ -322,5 +324,79 @@ router.route("/withoutNID/:id").put(checkPermission("workers.edit"), UpdateWorke
  *         description: Worker not found
  */
 router.route("/:IdNumber").put(checkPermission("workers.edit"), UpdateWorkerDetalsByNID);
+
+/**
+ * @swagger
+ * /Worker/reset-salary:
+ *   post:
+ *     summary: Reset salary fields on first day of month (cron job)
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Resets salaryAfterProcces and salaryAfterReword to base salary for workers whose loans/penalties/rewards are from previous months
+ *     responses:
+ *       200:
+ *         description: Salary fields reset successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 processedWorkers:
+ *                   type: number
+ */
+router.route("/reset-salary").post(checkPermission("workers.salary.edit"), resetSalaryFieldsOnFirstDay);
+
+/**
+ * @swagger
+ * /Worker/{id}/{type}/{itemId}:
+ *   delete:
+ *     summary: Delete a specific loan, penalty, or reward from a worker
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "6734de56e41091cfb6b02f7e"
+ *         description: Worker ID
+ *       - in: path
+ *         name: type
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [loans, penalty, reward]
+ *         example: "loans"
+ *         description: Type of financial record to delete
+ *       - in: path
+ *         name: itemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "507f1f77bcf86cd799439011"
+ *         description: ID of the specific loan/penalty/reward to delete
+ *     responses:
+ *       200:
+ *         description: Financial record deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid type parameter
+ *       404:
+ *         description: Worker or financial record not found
+ */
+router.route("/:id/:type/:itemId").delete(checkPermission("workers.money.delete"), deleteWorkerFinancialRecord);
 
 module.exports = router;

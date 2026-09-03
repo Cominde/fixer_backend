@@ -98,6 +98,29 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       salariesAggregate.length > 0 ? salariesAggregate[0].totalSalaries : 0;
     totalGain = totalIncome - totalSalaries;
     totaloutcome = totalSalaries;
+
+    // Add worker rewards as outcomes if they match the report's month/year
+    const workers = await Worker.find({});
+    for (const worker of workers) {
+      for (const reward of worker.reward) {
+        const rewardDate = new Date(reward.date);
+        const rewardMonth = rewardDate.getMonth() + 1;
+        const rewardYear = rewardDate.getFullYear();
+        
+        if (rewardMonth === month && rewardYear === year) {
+          // Add reward as outcome (expense)
+          totaloutcome += reward.amount;
+          totalGain -= reward.amount;
+          
+          // Also add to additions for tracking
+          additions.push({
+            title: `Worker Reward - ${worker.name}`,
+            price: -reward.amount,
+            date: reward.date,
+          });
+        }
+      }
+    }
     if (rent) {
       totaloutcome = totaloutcome + rent;
       totalGain = totalGain - rent;
@@ -357,6 +380,54 @@ exports.deleteReport = asyncHandler(async (req, res, next) => {
   }
 
   res.status(200).json({ message: "Report deleted successfully" });
+});
+
+// @desc delete specific addition from monthly report
+// @Route delete /api/v1/monthlyReport/addition/:year_month/:additionId
+// @access private
+
+exports.deleteAddition = asyncHandler(async (req, res, next) => {
+  let { year_month, additionId } = req.params;
+
+  let [year, month] = year_month.split("_").map(Number);
+  month = parseInt(month) - 1; // Adjust month to zero-based index
+  year = parseInt(year);
+  const dateM = getUTCDate(year, month);
+
+  let monthlyReport = await MonthlyMoneyReport.findOne({
+    date: dateM,
+  });
+
+  if (!monthlyReport) {
+    return next(new apiError(`No Report for this date ${dateM}`, 404));
+  }
+
+  const additionIndex = monthlyReport.additions.findIndex(
+    (add) => add._id.toString() === additionId
+  );
+
+  if (additionIndex === -1) {
+    return next(new apiError(`Addition not found`, 404));
+  }
+
+  const addition = monthlyReport.additions[additionIndex];
+
+  // Reverse the financial impact
+  if (addition.price > 0) {
+    monthlyReport.encome -= addition.price;
+    monthlyReport.totalGain -= addition.price;
+  } else {
+    const posPrice = addition.price * -1;
+    monthlyReport.outCome -= posPrice;
+    monthlyReport.totalGain += posPrice;
+  }
+
+  // Remove the addition
+  monthlyReport.additions.splice(additionIndex, 1);
+
+  await monthlyReport.save();
+
+  res.status(200).json({ data: monthlyReport, message: "Addition deleted successfully" });
 });
 
 // @desc get organization report data

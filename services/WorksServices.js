@@ -305,3 +305,121 @@ exports.moneyFromToworker = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({ data: workerResponse });
 });
+
+// @desc Reset salary fields on first day of month
+// @Route This should be called by a cron job on the first day of each month
+// @access private
+
+exports.resetSalaryFieldsOnFirstDay = asyncHandler(async (req, res, next) => {
+  const currentDate = new Date();
+  const currentMonth = currentDate.getMonth() + 1;
+  const currentYear = currentDate.getFullYear();
+
+  const workers = await Worker.find({});
+
+  for (const worker of workers) {
+    let greaterSavedMonth = 0;
+    let greaterSavedYear = 0;
+
+    // Find the latest month/year from loans, penalties, and rewards
+    worker.loans.forEach((loan) => {
+      const loanMonth = new Date(loan.date).getMonth() + 1;
+      const loanYear = new Date(loan.date).getFullYear();
+      if (loanMonth > greaterSavedMonth) {
+        greaterSavedMonth = loanMonth;
+      }
+      if (loanYear > greaterSavedYear) {
+        greaterSavedYear = loanYear;
+      }
+    });
+
+    worker.penalty.forEach((pen) => {
+      const penMonth = new Date(pen.date).getMonth() + 1;
+      const penYear = new Date(pen.date).getFullYear();
+      if (penMonth > greaterSavedMonth) {
+        greaterSavedMonth = penMonth;
+      }
+      if (penYear > greaterSavedYear) {
+        greaterSavedYear = penYear;
+      }
+    });
+
+    worker.reward.forEach((re) => {
+      const reMonth = new Date(re.date).getMonth() + 1;
+      const reYear = new Date(re.date).getFullYear();
+      if (reMonth > greaterSavedMonth) {
+        greaterSavedMonth = reMonth;
+      }
+      if (reYear > greaterSavedYear) {
+        greaterSavedYear = reYear;
+      }
+    });
+
+    // Reset salary fields if current month/year is greater than saved month/year
+    if (currentMonth > greaterSavedMonth || currentYear > greaterSavedYear) {
+      worker.salaryAfterProcces = worker.salary;
+      worker.salaryAfterReword = worker.salary;
+      await worker.save();
+    }
+  }
+
+  res.status(200).json({ 
+    message: "Salary fields reset successfully for eligible workers",
+    processedWorkers: workers.length 
+  });
+});
+
+// @desc Delete specific loan, penalty, or reward from worker
+// @Route DELETE /api/v1/Worker/:id/:type/:itemId
+// @access private
+
+exports.deleteWorkerFinancialRecord = asyncHandler(async (req, res, next) => {
+  const { id, type, itemId } = req.params;
+
+  // Validate type
+  const validTypes = ['loans', 'penalty', 'reward'];
+  if (!validTypes.includes(type)) {
+    return next(new apiError(`Invalid type. Must be one of: ${validTypes.join(', ')}`, 400));
+  }
+
+  const worker = await Worker.findById(id);
+
+  if (!worker) {
+    return next(new apiError(`Can't find worker with this id ${id}`, 404));
+  }
+
+  const arrayField = worker[type];
+  const itemIndex = arrayField.findIndex(item => item._id.toString() === itemId);
+
+  if (itemIndex === -1) {
+    return next(new apiError(`${type.slice(0, -1)} not found with this id ${itemId}`, 404));
+  }
+
+  const item = arrayField[itemIndex];
+
+  // Reverse the financial impact
+  if (type === 'loans' || type === 'penalty') {
+    // Loans and penalties are negative, so we add the amount back
+    worker.salaryAfterProcces = worker.salaryAfterProcces - item.amount;
+  } else if (type === 'reward') {
+    // Rewards are positive, so we subtract the amount
+    worker.salaryAfterReword = worker.salaryAfterReword - item.amount;
+    worker.salaryAfterProcces = worker.salaryAfterProcces - item.amount;
+  }
+
+  // Remove the item
+  arrayField.splice(itemIndex, 1);
+
+  await worker.save();
+
+  // Remove salary fields from response
+  const workerResponse = worker.toObject();
+  delete workerResponse.salary;
+  delete workerResponse.salaryAfterProcces;
+  delete workerResponse.salaryAfterReword;
+
+  res.status(200).json({ 
+    data: workerResponse, 
+    message: `${type.slice(0, -1)} deleted successfully` 
+  });
+});

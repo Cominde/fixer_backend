@@ -8,6 +8,7 @@ const axios = require("axios");
 dotenv.config({ path: "config.env" });
 const apiError = require("./utils/apiError");
 const dbconnection = require("./config/database");
+const { resetSalaryFieldsOnFirstDay } = require("./services/WorksServices");
 
 const { runBackup } = require("./utils/for_backup/backup");
 ///swagger
@@ -135,4 +136,28 @@ cron.schedule("*/14 * * * *", () => {
         console.error("Error setting up the request:", error.message);
       }
     });
+});
+
+// Reset salary fields on first day of each month at midnight
+cron.schedule("0 0 1 * *", async () => {
+  console.log("Running monthly salary reset cron job...");
+  try {
+    // Create a mock request and response object
+    const req = {};
+    const res = {
+      status: (code) => ({
+        json: (data) => {
+          console.log(`Salary reset completed: ${JSON.stringify(data)}`);
+        }
+      })
+    };
+    const next = (error) => {
+      console.error("Salary reset error:", error);
+    };
+    
+    await resetSalaryFieldsOnFirstDay(req, res, next);
+    console.log("Monthly salary reset completed successfully");
+  } catch (error) {
+    console.error("Error in monthly salary reset cron job:", error);
+  }
 });
