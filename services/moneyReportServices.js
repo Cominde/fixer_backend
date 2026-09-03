@@ -6,7 +6,6 @@ const Inventory = require("../models/Inventory");
 const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
 const asyncHandler = require("express-async-handler");
-const { worker } = require("workerpool");
 const { ObjectId } = require("bson");
 
 function getUTCDate(year, month) {
@@ -22,7 +21,6 @@ exports.createReport = asyncHandler(async (req, res, next) => {
   let water_bill = undefined;
   let gas_bill = undefined;
   let additions = [];
-  let rewards_and_pen = [];
 
   const { year, month } = req.body;
 
@@ -37,20 +35,15 @@ exports.createReport = asyncHandler(async (req, res, next) => {
   });
 
   if (oldReport) {
-    if (oldReport.rent) {
-      rent = oldReport.rent;
-    }
-    if (oldReport.electricity_bill) {
-      electricity_bill = oldReport.electricity_bill;
-    }
-    if (oldReport.water_bill) {
-      water_bill = oldReport.water_bill;
-    }
-    if (oldReport.gas_bill) {
-      gas_bill = oldReport.gas_bill;
-    }
-    if (oldReport.additions) {
-      additions = oldReport.additions;
+    if (oldReport.rent) rent = oldReport.rent;
+    if (oldReport.electricity_bill) electricity_bill = oldReport.electricity_bill;
+    if (oldReport.water_bill) water_bill = oldReport.water_bill;
+    if (oldReport.gas_bill) gas_bill = oldReport.gas_bill;
+
+    if (oldReport.additions && oldReport.additions.length > 0) {
+      additions = oldReport.additions.filter(
+        (a) => a.type !== 'reward' && a.type !== 'penalty'
+      );
     }
   }
 
@@ -59,7 +52,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       currentDate.getFullYear() > date.getFullYear()) &&
     oldReport
   ) {
-    res.status(200).json({ data: oldReport });
+    return res.status(200).json({ data: oldReport });
   } else if (
     currentDate.getMonth() < date.getMonth() ||
     currentDate.getFullYear() < date.getFullYear()
@@ -71,7 +64,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       ),
     );
   } else {
-    let monthlyReport = await MonthlyMoneyReport.findOneAndDelete({
+    await MonthlyMoneyReport.findOneAndDelete({
       date: {
         $gte: date,
         $lt: getUTCDate(year, month),
@@ -106,110 +99,86 @@ exports.createReport = asyncHandler(async (req, res, next) => {
     totaloutcome = totalSalaries;
 
     if (rent) {
-      totaloutcome = totaloutcome + rent;
-      totalGain = totalGain - rent;
+      totaloutcome += rent;
+      totalGain -= rent;
     }
-
     if (electricity_bill) {
-      totaloutcome = totaloutcome + electricity_bill;
-      totalGain = totalGain - electricity_bill;
+      totaloutcome += electricity_bill;
+      totalGain -= electricity_bill;
     }
-
     if (water_bill) {
-      totaloutcome = totaloutcome + water_bill;
-      totalGain = totalGain - water_bill;
+      totaloutcome += water_bill;
+      totalGain -= water_bill;
     }
-
     if (gas_bill) {
-      totaloutcome = totaloutcome + gas_bill;
-      totalGain = totalGain - gas_bill;
-    } 
-
-
-    if (additions.length > 0) {
-      for (let i = 0; i < additions.length; i++) {
-        if (additions[i].price < 0) {
-          totaloutcome = totaloutcome - additions[i].price;
-          totalGain = totalGain + additions[i].price;
-        } else {
-          totalIncome = totalIncome + additions[i].price;
-          totalGain = totalGain + additions[i].price;
-        }
-        if(additions[i].type !=null){
-          rewards_and_pen.push(additions[i])
-        }
-      }
+      totaloutcome += gas_bill;
+      totalGain -= gas_bill;
     }
 
-    // Add worker rewards as outcomes if they match the report's month/year
-    // Use aggregation for better performance
     const workerRewardsPenalties = await Worker.aggregate([
       {
         $match: {
           $or: [
             { 'reward.date': { $exists: true } },
-            { 'penalty.date': { $exists: true } }
-          ]
-        }
+            { 'penalty.date': { $exists: true } },
+          ],
+        },
       },
       {
         $project: {
           name: 1,
           reward: 1,
-          penalty: 1
-        }
-      }
+          penalty: 1,
+        },
+      },
     ]);
 
+    for (const worker of workerRewardsPenalties) {
+      for (const reward of worker.reward || []) {
+        const rewardDate = new Date(reward.date);
+        const rewardMonth = rewardDate.getMonth() + 1;
+        const rewardYear = rewardDate.getFullYear();
 
-      for (const worker of workerRewardsPenalties) {
-        for (const reward of worker.reward || []) {
-          const rewardDate = new Date(reward.date);
-          const rewardMonth = rewardDate.getMonth() + 1;
-          const rewardYear = rewardDate.getFullYear();
-
-          if (rewardMonth === month && rewardYear === year) {
-            const alreadyExists = rewards_and_pen.some(
-              (re) => re.type === 'reward' && re._id && re._id.equals(reward._id)
-            );
-
-            if (alreadyExists) {
-              continue;
-            }
-            additions.push({
-              title: `Worker Reward - ${worker.name}`,
-              price: - reward.amount,
-              date: reward.date,
-              type: 'reward',
-              _id: new ObjectId(reward._id),
-            });
-          }
+        if (rewardMonth === month && rewardYear === year) {
+          additions.push({
+            title: `Worker Reward - ${worker.name}`,
+            price: -reward.amount,
+            date: reward.date,
+            type: 'reward',
+            _id: new ObjectId(reward._id),
+          });
         }
+      }
 
-      // Process penalties
       for (const penalty of worker.penalty || []) {
         const penaltyDate = new Date(penalty.date);
         const penaltyMonth = penaltyDate.getMonth() + 1;
         const penaltyYear = penaltyDate.getFullYear();
 
         if (penaltyMonth === month && penaltyYear === year) {
-            const alreadyExists = rewards_and_pen.some(
-              (pen) => pen.type === 'penalty' && pen._id && pen._id.equals(penalty._id)
-            );
-
-            if (alreadyExists) {
-              continue;
-            }
-            additions.push({
+          additions.push({
             title: `Worker Penalty - ${worker.name}`,
             price: Math.abs(penalty.amount),
             date: penalty.date,
+            type: 'penalty',
             _id: new ObjectId(penalty._id),
-            type:'penalty',
-              });
-              }
-            }
+          });
+        }
       }
+    }
+
+    for (const addition of additions) {
+      if (addition.type === 'reward' || addition.type === 'penalty') {
+        continue; // اتحسبت أصلاً جوه salaryAfterProcces
+      }
+      if (addition.price < 0) {
+        totaloutcome -= addition.price;
+        totalGain += addition.price;
+      } else {
+        totalIncome += addition.price;
+        totalGain += addition.price;
+      }
+    }
 
     const Money = await MonthlyMoneyReport.create({
       date,
