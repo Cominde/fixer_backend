@@ -133,7 +133,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
         },
       },
     ]);
-
+    console.log('typeof year:', typeof year, 'typeof month:', typeof month, year, month);
     for (const worker of workerRewardsPenalties) {
       for (const reward of worker.reward || []) {
         const rewardDate = new Date(reward.date);
