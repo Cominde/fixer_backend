@@ -22,7 +22,15 @@ exports.createReport = asyncHandler(async (req, res, next) => {
   let gas_bill = undefined;
   let additions = [];
 
-  const { year, month } = req.body;
+  // تحويل صريح لأرقام - عشان نضمن إن المقارنات الصارمة (===) مع
+  // rewardMonth/rewardYear (اللي هي أرقام دايمًا) متفشلش لو الـ request
+  // جاي بـ month/year كـ string (فرق شائع بين postman/local وclient حقيقي)
+  const year = Number(req.body.year);
+  const month = Number(req.body.month);
+
+  if (Number.isNaN(year) || Number.isNaN(month)) {
+    return next(new apiError("year and month must be valid numbers", 400));
+  }
 
   const date = getUTCDate(year, month - 1);
   const currentDate = new Date();
@@ -40,6 +48,8 @@ exports.createReport = asyncHandler(async (req, res, next) => {
     if (oldReport.water_bill) water_bill = oldReport.water_bill;
     if (oldReport.gas_bill) gas_bill = oldReport.gas_bill;
 
+    // خد الإضافات اليدوية بس (استثني reward/penalty)
+    // لأن reward/penalty هيتبنوا من جديد تحت من مصدرهم الحقيقي (Worker collection)
     if (oldReport.additions && oldReport.additions.length > 0) {
       additions = oldReport.additions.filter(
         (a) => a.type !== 'reward' && a.type !== 'penalty'
@@ -47,6 +57,8 @@ exports.createReport = asyncHandler(async (req, res, next) => {
     }
   }
 
+  // ملحوظة: استخدمنا getUTCMonth/getUTCFullYear بدل getMonth/getFullYear
+  // عشان الحساب يبقى ثابت مهما كان الـ timezone بتاع السيرفر (local vs Render/UTC)
   if (
     (currentDate.getUTCMonth() > date.getUTCMonth() ||
       currentDate.getUTCFullYear() > date.getUTCFullYear()) &&
@@ -83,6 +95,8 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       0,
     );
 
+    // totalSalaries هنا أصلاً متضاف/متخصوم منه الـ reward/penalty
+    // (لأنها جايه من salaryAfterProcces اللي بيتحسب جوه الـ Worker service)
     const salariesAggregate = await Worker.aggregate([
       {
         $group: {
@@ -115,7 +129,8 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       totalGain -= gas_bill;
     }
 
-
+    // اجمع reward/penalty بتاعة الشهر ده - عشان تتسجل في additions للعرض فقط
+    // من غير ما تأثر على التوتالز لأنها أصلاً محسوبة جوه totalSalaries
     const workerRewardsPenalties = await Worker.aggregate([
       {
         $match: {
@@ -133,11 +148,12 @@ exports.createReport = asyncHandler(async (req, res, next) => {
         },
       },
     ]);
-    console.log('typeof year:', typeof year, 'typeof month:', typeof month, year, month);
+
     for (const worker of workerRewardsPenalties) {
       for (const reward of worker.reward || []) {
         const rewardDate = new Date(reward.date);
-
+        // getUTCMonth/getUTCFullYear بدل getMonth/getFullYear
+        // عشان نتجنب فرق التوقيت بين local وRender
         const rewardMonth = rewardDate.getUTCMonth() + 1;
         const rewardYear = rewardDate.getUTCFullYear();
 
@@ -169,10 +185,11 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       }
     }
 
-
+    // احسب التوتالز بس من الإضافات اليدوية (استثني reward/penalty
+    // لأنها أصلاً متحسوبة جوه totalSalaries)
     for (const addition of additions) {
       if (addition.type === 'reward' || addition.type === 'penalty') {
-        continue; 
+        continue; // اتحسبت أصلاً جوه salaryAfterProcces
       }
       if (addition.price < 0) {
         totaloutcome -= addition.price;
