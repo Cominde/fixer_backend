@@ -21,6 +21,11 @@ const monthlyMoneyReportSchema = new mongoose.Schema(
         date: {
           type: Date,
         },
+        type: {
+          type: String,
+          enum: ['reward', 'penalty', 'null'],
+          default: 'null',
+        },
       },
     ],
     electricity_bill: { type: Number },

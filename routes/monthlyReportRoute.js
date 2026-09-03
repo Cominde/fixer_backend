@@ -10,6 +10,7 @@ const {
   deleteReport,
   deleteAddition,
   getOrganizationReport,
+  updateReport,
 } = require("../services/moneyReportServices");
 const authService = require("../services/authService");
 /**
@@ -331,5 +332,6 @@ router.route("/addition/:year_month/:additionId").delete(deleteAddition);
  *         description: from and to dates are required
  */
 router.route("/organization").get(getOrganizationReport);
+router.route("/update/report/:id").put(updateReport);
 
 module.exports = router;

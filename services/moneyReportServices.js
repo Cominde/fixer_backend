@@ -7,6 +7,7 @@ const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
 const asyncHandler = require("express-async-handler");
 const { worker } = require("workerpool");
+const { ObjectId } = require("bson");
 
 function getUTCDate(year, month) {
   return new Date(Date.UTC(year, month, 1));
@@ -21,6 +22,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
   let water_bill = undefined;
   let gas_bill = undefined;
   let additions = [];
+  let rewards_and_pen = [];
 
   const { year, month } = req.body;
 
@@ -33,6 +35,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       $lt: getUTCDate(year, month),
     },
   });
+
   if (oldReport) {
     if (oldReport.rent) {
       rent = oldReport.rent;
@@ -50,6 +53,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       additions = oldReport.additions;
     }
   }
+
   if (
     (currentDate.getMonth() > date.getMonth() ||
       currentDate.getFullYear() > date.getFullYear()) &&
@@ -81,10 +85,11 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       },
     });
 
-      totalIncome = repairs.reduce(
+    totalIncome = repairs.reduce(
       (total, repair) => total + repair.priceAfterDiscount,
       0,
     );
+
     const salariesAggregate = await Worker.aggregate([
       {
         $group: {
@@ -96,78 +101,116 @@ exports.createReport = asyncHandler(async (req, res, next) => {
 
     const totalSalaries =
       salariesAggregate.length > 0 ? salariesAggregate[0].totalSalaries : 0;
+
     totalGain = totalIncome - totalSalaries;
     totaloutcome = totalSalaries;
 
-    // Add worker rewards as outcomes if they match the report's month/year
-    const workers = await Worker.find({});
-    for (const worker of workers) {
-      for (const reward of worker.reward) {
-        const rewardDate = new Date(reward.date);
-        const rewardMonth = rewardDate.getMonth() + 1;
-        const rewardYear = rewardDate.getFullYear();
-        
-        if (rewardMonth === month && rewardYear === year) {
-          // Add reward as outcome (expense)
-          totaloutcome += reward.amount;
-          totalGain -= reward.amount;
-          
-          // Also add to additions for tracking
-          additions.push({
-            title: `Worker Reward - ${worker.name}`,
-            price: -reward.amount,
-            date: reward.date,
-          });
-        }
-      }
-      for (const penalty of worker.penalty) {
-        const penaltyDate = new Date(penalty.date);
-        const penaltyMonth = penaltyDate.getMonth() + 1;
-        const penaltyYear = penaltyDate.getFullYear();
-        
-        if (penaltyMonth === month && penaltyYear === year) {
-          // Add reward as outcome (expense)
-          totalIncome -= penalty.amount;
-          totalGain -= penalty.amount;
-          
-          // Also add to additions for tracking
-          additions.push({
-            title: `Worker penalty - ${worker.name}`,
-            price: -penalty.amount,
-            date: penalty.date,
-          });
-        }
-      }
-    }
     if (rent) {
       totaloutcome = totaloutcome + rent;
       totalGain = totalGain - rent;
     }
+
     if (electricity_bill) {
       totaloutcome = totaloutcome + electricity_bill;
       totalGain = totalGain - electricity_bill;
     }
+
     if (water_bill) {
       totaloutcome = totaloutcome + water_bill;
       totalGain = totalGain - water_bill;
     }
+
     if (gas_bill) {
       totaloutcome = totaloutcome + gas_bill;
       totalGain = totalGain - gas_bill;
-    }
-    if(additions.length>0){
-      for (let i=0 ; i< additions.length; i++){
-        if(additions[i].price <0){
+    } 
+
+
+    if (additions.length > 0) {
+      for (let i = 0; i < additions.length; i++) {
+        if (additions[i].price < 0) {
           totaloutcome = totaloutcome - additions[i].price;
           totalGain = totalGain + additions[i].price;
-          console.log(`total gain ${totalGain} , and the add.price ${additions[i].price}`)
-        }else{
+        } else {
           totalIncome = totalIncome + additions[i].price;
           totalGain = totalGain + additions[i].price;
-          console.log(`total gain ${totalGain} , and the add.price ${additions[i].price}`)
+        }
+        if(additions[i].type !=null){
+          rewards_and_pen.push(additions[i])
         }
       }
     }
+
+    // Add worker rewards as outcomes if they match the report's month/year
+    // Use aggregation for better performance
+    const workerRewardsPenalties = await Worker.aggregate([
+      {
+        $match: {
+          $or: [
+            { 'reward.date': { $exists: true } },
+            { 'penalty.date': { $exists: true } }
+          ]
+        }
+      },
+      {
+        $project: {
+          name: 1,
+          reward: 1,
+          penalty: 1
+        }
+      }
+    ]);
+
+
+      for (const worker of workerRewardsPenalties) {
+        for (const reward of worker.reward || []) {
+          const rewardDate = new Date(reward.date);
+          const rewardMonth = rewardDate.getMonth() + 1;
+          const rewardYear = rewardDate.getFullYear();
+
+          if (rewardMonth === month && rewardYear === year) {
+            const alreadyExists = rewards_and_pen.some(
+              (re) => re.type === 'reward' && re._id && re._id.equals(reward._id)
+            );
+
+            if (alreadyExists) {
+              continue;
+            }
+            additions.push({
+              title: `Worker Reward - ${worker.name}`,
+              price: - reward.amount,
+              date: reward.date,
+              type: 'reward',
+              _id: new ObjectId(reward._id),
+            });
+          }
+        }
+
+      // Process penalties
+      for (const penalty of worker.penalty || []) {
+        const penaltyDate = new Date(penalty.date);
+        const penaltyMonth = penaltyDate.getMonth() + 1;
+        const penaltyYear = penaltyDate.getFullYear();
+
+        if (penaltyMonth === month && penaltyYear === year) {
+            const alreadyExists = rewards_and_pen.some(
+              (pen) => pen.type === 'penalty' && pen._id && pen._id.equals(penalty._id)
+            );
+
+            if (alreadyExists) {
+              continue;
+            }
+            additions.push({
+            title: `Worker Penalty - ${worker.name}`,
+            price: Math.abs(penalty.amount),
+            date: penalty.date,
+            _id: new ObjectId(penalty._id),
+            type:'penalty',
+              });
+              }
+            }
+      }
+
     const Money = await MonthlyMoneyReport.create({
       date,
       outCome: totaloutcome,
@@ -209,6 +252,7 @@ exports.put_the_bills_rent = asyncHandler(async (req, res, next) => {
   ) {
     return next(new apiError("The values must be positive", 400));
   }
+
   let [year, month] = year_month.split("_").map(Number);
   if (isNaN(month) || isNaN(year)) {
     return next(new apiError("Invalid month and year", 400));
@@ -232,14 +276,17 @@ exports.put_the_bills_rent = asyncHandler(async (req, res, next) => {
     total_bills += electricity_bill - (report.electricity_bill || 0);
     report.electricity_bill = electricity_bill;
   }
+
   if (water_bill !== undefined) {
     total_bills += water_bill - (report.water_bill || 0);
     report.water_bill = water_bill;
   }
+
   if (gas_bill !== undefined) {
     total_bills += gas_bill - (report.gas_bill || 0);
     report.gas_bill = gas_bill;
   }
+
   if (rent !== undefined) {
     total_bills += rent - (report.rent || 0);
     report.rent = rent;
@@ -256,7 +303,6 @@ exports.put_the_bills_rent = asyncHandler(async (req, res, next) => {
 // @desc add  additions
 // @Route post /api/v1/monthlyReport/addthing
 // @access private
-
 exports.addorSubthing = asyncHandler(async (req, res, next) => {
   const { date, price, title } = req.body;
   let posPrice = 0;
@@ -276,6 +322,7 @@ exports.addorSubthing = asyncHandler(async (req, res, next) => {
       ),
     );
   }
+
   monthlyReport.additions.push({ title, price, date });
 
   if (price > 0) {
@@ -295,7 +342,6 @@ exports.addorSubthing = asyncHandler(async (req, res, next) => {
 // @desc get all repair of the month
 // @Route post /api/v1/monthlyReport/repairs
 // @access private
-
 exports.getmonthWork = asyncHandler(async (req, res, next) => {
   let { year_month } = req.params;
 
@@ -318,6 +364,7 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
       $lt: endDate,
     },
   }).select("client brand category model createdAt priceAfterDiscount");
+
   const workers = await Worker.find().select("name salary");
 
   const monthlyReport = await MonthlyMoneyReport.findOne({
@@ -349,6 +396,7 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
         price: monthlyReport.rent,
       });
     }
+
     if (monthlyReport.electricity_bill) {
       sortedAdditions.push({
         title: "Electricity bill",
@@ -356,6 +404,7 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
         price: monthlyReport.electricity_bill,
       });
     }
+
     if (monthlyReport.water_bill) {
       sortedAdditions.push({
         title: "Water bill",
@@ -363,12 +412,84 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
         price: monthlyReport.water_bill,
       });
     }
+
     if (monthlyReport.gas_bill) {
       sortedAdditions.push({
         title: "Gas bill",
         date: null,
         price: monthlyReport.gas_bill,
       });
+    }
+  }
+
+  // Add worker rewards as outcomes if they match the report's month/year
+  // Use aggregation for better performance
+  const rewards_pen_ofworkers = await Worker.aggregate([
+    {
+      $match: {
+        $or: [
+          { 'reward.date': { $exists: true } },
+          { 'penalty.date': { $exists: true } }
+        ]
+      }
+    },
+    {
+      $project: {
+        name: 1,
+        reward: 1,
+        penalty: 1
+      }
+    }
+  ]);
+
+  // Track added items to prevent duplicates
+  const addedItems = new Set();
+
+  // Also track existing additions to prevent duplicates
+  const existingAdditionKeys = new Set();
+  for (const add of additions) {
+    if (add.title && add.title.startsWith('Worker Reward -')) {
+      existingAdditionKeys.add(`reward_${add.date}_${add.price}`);
+    } else if (add.title && add.title.startsWith('Worker Penalty -')) {
+      existingAdditionKeys.add(`penalty_${add.date}_${add.price}`);
+    }
+  }
+
+  for (const worker of rewards_pen_ofworkers) {
+    // Process rewards
+    for (const reward of worker.reward || []) {
+      const rewardDate = new Date(reward.date);
+      const rewardMonth = rewardDate.getMonth() + 1;
+      const rewardYear = rewardDate.getFullYear();
+      const rewardKey = `reward_${reward.date}_${reward.amount}`;
+
+      if (rewardMonth === month && rewardYear === year && 
+          !addedItems.has(rewardKey) && !existingAdditionKeys.has(rewardKey)) {
+        addedItems.add(rewardKey);
+        sortedAdditions.push({
+          title: `Worker Reward - ${worker.name}`,
+          price: -reward.amount,
+          date: reward.date,
+        });
+      }
+    }
+
+    // Process penalties
+    for (const penalty of worker.penalty || []) {
+      const penaltyDate = new Date(penalty.date);
+      const penaltyMonth = penaltyDate.getMonth() + 1;
+      const penaltyYear = penaltyDate.getFullYear();
+      const penaltyKey = `penalty_${penalty.date}_${Math.abs(penalty.amount)}`;
+
+      if (penaltyMonth === month && penaltyYear === year && 
+          !addedItems.has(penaltyKey) && !existingAdditionKeys.has(penaltyKey)) {
+        addedItems.add(penaltyKey);
+        sortedAdditions.push({
+          title: `Worker Penalty - ${worker.name}`,
+          price: -Math.abs(penalty.amount),
+          date: penalty.date,
+        });
+      }
     }
   }
 
@@ -380,13 +501,13 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
 // @desc delete  report
 // @Route delete /api/v1/monthlyReport/delete
 // @access private
-
 exports.deleteReport = asyncHandler(async (req, res, next) => {
   let { year_month } = req.params;
 
   let [year, month] = year_month.split("_").map(Number);
   month = parseInt(month) - 1; // Adjust month to zero-based index
   year = parseInt(year);
+
   const dateM = getUTCDate(year, month);
 
   let monthlyReport = await MonthlyMoneyReport.findOneAndDelete({
@@ -403,13 +524,13 @@ exports.deleteReport = asyncHandler(async (req, res, next) => {
 // @desc delete specific addition from monthly report
 // @Route delete /api/v1/monthlyReport/addition/:year_month/:additionId
 // @access private
-
 exports.deleteAddition = asyncHandler(async (req, res, next) => {
   let { year_month, additionId } = req.params;
 
   let [year, month] = year_month.split("_").map(Number);
   month = parseInt(month) - 1; // Adjust month to zero-based index
   year = parseInt(year);
+
   const dateM = getUTCDate(year, month);
 
   let monthlyReport = await MonthlyMoneyReport.findOne({
@@ -535,3 +656,5 @@ exports.getOrganizationReport = asyncHandler(async (req, res, next) => {
     },
   });
 });
+
+exports.updateReport = factory.updateOne(MonthlyMoneyReport);
