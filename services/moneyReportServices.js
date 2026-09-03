@@ -385,7 +385,7 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
   );
 
   const sortedAdditions = additions.sort(
-    (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+    (a, b) => new Date(b.date) - new Date(a.date),
   );
 
   if (monthlyReport) {
