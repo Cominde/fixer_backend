@@ -120,6 +120,24 @@ exports.createReport = asyncHandler(async (req, res, next) => {
           });
         }
       }
+      for (const penalty of worker.penalty) {
+        const penaltyDate = new Date(penalty.date);
+        const penaltyMonth = penaltyDate.getMonth() + 1;
+        const penaltyYear = penaltyDate.getFullYear();
+        
+        if (penaltyMonth === month && penaltyYear === year) {
+          // Add reward as outcome (expense)
+          totalIncome -= penalty.amount;
+          totalGain -= penalty.amount;
+          
+          // Also add to additions for tracking
+          additions.push({
+            title: `Worker penalty - ${worker.name}`,
+            price: -penalty.amount,
+            date: penalty.date,
+          });
+        }
+      }
     }
     if (rent) {
       totaloutcome = totaloutcome + rent;

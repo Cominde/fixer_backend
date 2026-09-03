@@ -240,9 +240,10 @@ exports.moneyFromToworker = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const currentDate = new Date(date);
-  const currentMonth = currentDate.getMonth() + 1;
-  const currentYear = currentDate.getFullYear();
+  // Use current date if date is not provided
+  const transactionDate = date ? new Date(date) : new Date();
+  const currentMonth = transactionDate.getMonth() + 1;
+  const currentYear = transactionDate.getFullYear();
 
   worker.loans.forEach((loan) => {
     const loanMonth = new Date(loan.date).getMonth() + 1;
@@ -279,17 +280,17 @@ exports.moneyFromToworker = asyncHandler(async (req, res, next) => {
     worker.salaryAfterReword = worker.salary;
   }
   if (loans < 0) {
-    worker.loans.push({ date, amount: loans });
+    worker.loans.push({ date: transactionDate, amount: loans });
     total = total + loans;
   }
 
   if (penalty < 0) {
-    worker.penalty.push({ date, amount: penalty });
+    worker.penalty.push({ date: transactionDate, amount: penalty });
     total = total + penalty;
   }
 
   if (reward > 0) {
-    worker.reward.push({ date, amount: reward });
+    worker.reward.push({ date: transactionDate, amount: reward });
     total = total + reward;
     worker.salaryAfterReword = worker.salaryAfterReword + reward;
   }
