@@ -48,14 +48,14 @@ exports.createReport = asyncHandler(async (req, res, next) => {
   }
 
   if (
-    (currentDate.getMonth() > date.getMonth() ||
-      currentDate.getFullYear() > date.getFullYear()) &&
+    (currentDate.getUTCMonth() > date.getUTCMonth() ||
+      currentDate.getUTCFullYear() > date.getUTCFullYear()) &&
     oldReport
   ) {
     return res.status(200).json({ data: oldReport });
   } else if (
-    currentDate.getMonth() < date.getMonth() ||
-    currentDate.getFullYear() < date.getFullYear()
+    currentDate.getUTCMonth() < date.getUTCMonth() ||
+    currentDate.getUTCFullYear() < date.getUTCFullYear()
   ) {
     return next(
       new apiError(
@@ -115,6 +115,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       totalGain -= gas_bill;
     }
 
+
     const workerRewardsPenalties = await Worker.aggregate([
       {
         $match: {
@@ -136,8 +137,9 @@ exports.createReport = asyncHandler(async (req, res, next) => {
     for (const worker of workerRewardsPenalties) {
       for (const reward of worker.reward || []) {
         const rewardDate = new Date(reward.date);
-        const rewardMonth = rewardDate.getMonth() + 1;
-        const rewardYear = rewardDate.getFullYear();
+
+        const rewardMonth = rewardDate.getUTCMonth() + 1;
+        const rewardYear = rewardDate.getUTCFullYear();
 
         if (rewardMonth === month && rewardYear === year) {
           additions.push({
@@ -152,8 +154,8 @@ exports.createReport = asyncHandler(async (req, res, next) => {
 
       for (const penalty of worker.penalty || []) {
         const penaltyDate = new Date(penalty.date);
-        const penaltyMonth = penaltyDate.getMonth() + 1;
-        const penaltyYear = penaltyDate.getFullYear();
+        const penaltyMonth = penaltyDate.getUTCMonth() + 1;
+        const penaltyYear = penaltyDate.getUTCFullYear();
 
         if (penaltyMonth === month && penaltyYear === year) {
           additions.push({
@@ -167,9 +169,10 @@ exports.createReport = asyncHandler(async (req, res, next) => {
       }
     }
 
+
     for (const addition of additions) {
       if (addition.type === 'reward' || addition.type === 'penalty') {
-        continue; // اتحسبت أصلاً جوه salaryAfterProcces
+        continue; 
       }
       if (addition.price < 0) {
         totaloutcome -= addition.price;
