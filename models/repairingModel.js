@@ -134,6 +134,9 @@ const repairingSchema = new mongoose.Schema(
         },
       },
     ],
+    Reception: {
+      type: String,
+    },
   },
 
   // مفيده ليا لو عايز اجيب ال منتج الاحدث بالوقت

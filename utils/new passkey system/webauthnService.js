@@ -5,6 +5,7 @@ const base64url = require("base64url");
 const Passkey = require("../models/passkeyModel");
 const Challenge = require("../models/challengeModel");
 const User = require("../models/userModel");
+const Worker = require("../models/Worker");
 const ApiError = require("../utils/apiError");
 const createToken = require("../utils/createToken");
 const mongoose = require("mongoose");
@@ -651,5 +652,367 @@ exports.revokePasskey = async (userId, credentialId) => {
   return {
     status: "success",
     message: "Passkey revoked successfully",
+  };
+};
+
+/**
+ * Begin passkey registration for worker
+ */
+exports.beginWorkerPasskeyRegistration = async (workerId, origin) => {
+  console.log(
+    "[WORKER PASSKEY REGISTRATION] Starting registration for workerId:",
+    workerId,
+  );
+  console.log("[WORKER PASSKEY REGISTRATION] Origin:", origin);
+
+  validateOrigin(origin);
+  const id = workerId?._id ?? workerId;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    console.log("[WORKER PASSKEY REGISTRATION] Invalid worker ID format:", id);
+    throw new ApiError("Invalid worker ID format", 400);
+  }
+  const worker = await Worker.findById(workerId);
+  if (!worker) {
+    console.log("[WORKER PASSKEY REGISTRATION] Worker not found:", workerId);
+    throw new ApiError("Worker not found", 404);
+  }
+
+  console.log("[WORKER PASSKEY REGISTRATION] Worker found:", worker.name);
+  const challenge = await createChallenge("worker-register", workerId);
+  console.log(
+    "[WORKER PASSKEY REGISTRATION] Generated challenge (base64):",
+    challenge,
+  );
+
+  const rpId = getRpId(origin);
+  console.log("[WORKER PASSKEY REGISTRATION] Dynamic RP_ID for origin:", rpId);
+
+  const options = {
+    challenge: challenge,
+    rp: {
+      name: RP_NAME,
+      id: rpId,
+    },
+    user: {
+      id: worker._id.toString(),
+      name: worker.phoneNumber,
+      displayName: worker.name,
+    },
+    pubKeyCredParams: [
+      { alg: -7, type: "public-key" }, // ES256
+      { alg: -257, type: "public-key" }, // RS256
+    ],
+    timeout: 60000,
+    attestation: "direct",
+    authenticatorSelection: {
+      authenticatorAttachment: "platform",
+      userVerification: "required",
+      residentKey: "preferred",
+    },
+  };
+
+  console.log(
+    "[WORKER PASSKEY REGISTRATION] Returning options:",
+    JSON.stringify(options, null, 2),
+  );
+  return options;
+};
+
+/**
+ * Finish passkey registration for worker
+ */
+exports.finishWorkerPasskeyRegistration = async (
+  workerId,
+  credential,
+  origin,
+  clientDataJSON,
+) => {
+  console.log("[WORKER PASSKEY FINISH REGISTRATION] Starting finish registration");
+  console.log("[WORKER PASSKEY FINISH REGISTRATION] workerId:", workerId);
+  console.log("[WORKER PASSKEY FINISH REGISTRATION] origin:", origin);
+
+  validateOrigin(origin);
+
+  const worker = await Worker.findById(workerId);
+  if (!worker) {
+    console.log("[WORKER PASSKEY FINISH REGISTRATION] Worker not found:", workerId);
+    throw new ApiError("Worker not found", 404);
+  }
+
+  console.log("[WORKER PASSKEY FINISH REGISTRATION] Worker found:", worker.name);
+
+  const clientData = JSON.parse(
+    Buffer.from(clientDataJSON, "base64").toString("utf8"),
+  );
+  const challenge = clientData.challenge;
+
+  console.log(
+    "[WORKER PASSKEY FINISH REGISTRATION] Client data challenge:",
+    challenge,
+  );
+  console.log(
+    "[WORKER PASSKEY FINISH REGISTRATION] Client data type:",
+    clientData.type,
+  );
+  console.log(
+    "[WORKER PASSKEY FINISH REGISTRATION] Client data origin:",
+    clientData.origin,
+  );
+
+  const challengeDoc = await validateChallenge(challenge, "worker-register", workerId);
+  console.log("[WORKER PASSKEY FINISH REGISTRATION] Challenge validated");
+
+  if (clientData.type !== "webauthn.create") {
+    console.log(
+      "[WORKER PASSKEY FINISH REGISTRATION] Invalid client data type:",
+      clientData.type,
+    );
+    throw new ApiError("Invalid client data type", 400);
+  }
+
+  if (clientData.origin !== origin) {
+    console.log(
+      "[WORKER PASSKEY FINISH REGISTRATION] Origin mismatch:",
+      clientData.origin,
+      "vs",
+      origin,
+    );
+    throw new ApiError("Origin mismatch", 400);
+  }
+
+  const { id, response } = credential;
+  console.log("[WORKER PASSKEY FINISH REGISTRATION] Credential ID:", id);
+  console.log(
+    "[WORKER PASSKEY FINISH REGISTRATION] Response has attestationObject:",
+    !!response.attestationObject,
+  );
+
+  const attestationBuffer = base64url.toBuffer(response.attestationObject);
+  const attestation = cbor.decodeFirstSync(attestationBuffer);
+  const authData = attestation.authData;
+
+  console.log(
+    "[WORKER PASSKEY FINISH REGISTRATION] Auth data length:",
+    authData.length,
+  );
+
+  const credentialIdLength = authData.readUInt16BE(53);
+  const publicKeyBytes = authData.slice(55 + credentialIdLength);
+
+  console.log(
+    "[WORKER PASSKEY FINISH REGISTRATION] Credential ID length:",
+    credentialIdLength,
+  );
+  console.log(
+    "[WORKER PASSKEY FINISH REGISTRATION] Public key bytes length:",
+    publicKeyBytes.length,
+  );
+
+  const counter = authData.readUInt32BE(33);
+  console.log("[WORKER PASSKEY FINISH REGISTRATION] Counter:", counter);
+
+  const passkeyData = {
+    userId: worker._id,
+    credentialId: base64url.encode(base64url.toBuffer(id)),
+    publicKey: base64url.encode(publicKeyBytes),
+    counter,
+    transports: response.transports || ["internal", "usb", "nfc", "ble"],
+    aaguid: "00000000-0000-0000-0000-000000000000",
+    label: `${worker.name}'s Passkey`,
+    userType: "worker",
+  };
+
+  console.log(
+    "[WORKER PASSKEY FINISH REGISTRATION] Creating passkey with data:",
+    JSON.stringify(passkeyData, null, 2),
+  );
+
+  const newPasskey = await Passkey.create(passkeyData);
+  console.log(
+    "[WORKER PASSKEY FINISH REGISTRATION] Passkey created successfully:",
+    newPasskey._id,
+  );
+
+  await markChallengeUsed(challengeDoc._id);
+  console.log("[WORKER PASSKEY FINISH REGISTRATION] Challenge marked as used");
+
+  return {
+    status: "success",
+    message: "Worker passkey registered successfully",
+  };
+};
+
+/**
+ * Begin passkey login for worker
+ */
+exports.beginWorkerPasskeyLogin = async (phoneNumber, origin) => {
+  validateOrigin(origin);
+
+  const worker = await Worker.findOne({ phoneNumber: phoneNumber.trim() });
+  if (!worker) {
+    const challenge = await createChallenge("worker-login", null, phoneNumber);
+    const rpId = getRpId(origin);
+    return { allowCredentials: [], challenge, rpId };
+  }
+
+  const passkeys = await Passkey.find({
+    userId: worker._id,
+    revokedAt: { $exists: false },
+    userType: "worker",
+  });
+
+  const allowCredentials = passkeys.map((passkey) => ({
+    id: passkey.credentialId,
+    type: "public-key",
+    transports: passkey.transports,
+  }));
+
+  const challenge = await createChallenge("worker-login", worker._id, phoneNumber);
+  console.log("Generated worker login challenge (base64):", challenge);
+
+  const rpId = getRpId(origin);
+  console.log("[WORKER PASSKEY LOGIN] Dynamic RP_ID for origin:", rpId);
+
+  return {
+    allowCredentials,
+    challenge,
+    rpId: rpId,
+    userVerification: "required",
+  };
+};
+
+/**
+ * Finish passkey login for worker
+ */
+exports.finishWorkerPasskeyLogin = async (credential, origin, clientDataJSON) => {
+  console.log("[WORKER PASSKEY FINISH LOGIN] Starting finish login");
+  console.log("[WORKER PASSKEY FINISH LOGIN] Origin:", origin);
+
+  validateOrigin(origin);
+
+  const clientData = JSON.parse(
+    Buffer.from(clientDataJSON, "base64").toString("utf8"),
+  );
+  const challenge = clientData.challenge;
+
+  console.log("[WORKER PASSKEY FINISH LOGIN] Client data challenge:", challenge);
+  console.log("[WORKER PASSKEY FINISH LOGIN] Client data type:", clientData.type);
+  console.log("[WORKER PASSKEY FINISH LOGIN] Client data origin:", clientData.origin);
+
+  const challengeDoc = await Challenge.findOne({
+    challenge,
+    type: "worker-login",
+    usedAt: { $exists: false },
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (!challengeDoc) {
+    console.log("[WORKER PASSKEY FINISH LOGIN] Challenge not found or expired");
+    throw new ApiError("Invalid or expired challenge", 400);
+  }
+
+  console.log("[WORKER PASSKEY FINISH LOGIN] Challenge validated");
+
+  if (clientData.type !== "webauthn.get") {
+    console.log(
+      "[WORKER PASSKEY FINISH LOGIN] Invalid client data type:",
+      clientData.type,
+    );
+    throw new ApiError("Invalid client data type", 400);
+  }
+
+  if (clientData.origin !== origin) {
+    console.log(
+      "[WORKER PASSKEY FINISH LOGIN] Origin mismatch:",
+      clientData.origin,
+      "vs",
+      origin,
+    );
+    throw new ApiError("Origin mismatch", 400);
+  }
+
+  const { id, response } = credential;
+  const { authenticatorData, signature } = response;
+
+  console.log("[WORKER PASSKEY FINISH LOGIN] Credential ID:", id);
+  console.log(
+    "[WORKER PASSKEY FINISH LOGIN] Has authenticatorData:",
+    !!authenticatorData,
+  );
+  console.log("[WORKER PASSKEY FINISH LOGIN] Has signature:", !!signature);
+
+  const passkey = await Passkey.findOne({
+    credentialId: base64url.encode(base64url.toBuffer(id)),
+    revokedAt: { $exists: false },
+    userType: "worker",
+  });
+
+  if (!passkey) {
+    console.log(
+      "[WORKER PASSKEY FINISH LOGIN] Passkey not found for credential ID:",
+      id,
+    );
+    throw new ApiError("Passkey not found", 400);
+  }
+
+  console.log("[WORKER PASSKEY FINISH LOGIN] Passkey found, worker ID:", passkey.userId);
+
+  const isValidSignature = verifyWebAuthnSignature(
+    passkey.publicKey,
+    authenticatorData,
+    signature,
+    clientDataJSON,
+  );
+
+  if (!isValidSignature) {
+    console.log("[WORKER PASSKEY FINISH LOGIN] Signature verification failed");
+    throw new ApiError("Signature verification failed", 400);
+  }
+
+  console.log("[WORKER PASSKEY FINISH LOGIN] Signature verified successfully");
+
+  const currentCounter = base64url.toBuffer(authenticatorData).readUInt32BE(33);
+  console.log(
+    "[WORKER PASSKEY FINISH LOGIN] Current counter:",
+    currentCounter,
+    "Stored counter:",
+    passkey.counter,
+  );
+
+  if (currentCounter < passkey.counter) {
+    console.log("[WORKER PASSKEY FINISH LOGIN] Counter replay attack detected");
+    throw new ApiError("Counter replay attack detected", 400);
+  }
+
+  const worker = await Worker.findById(challengeDoc.userId || passkey.userId);
+  if (!worker) {
+    console.log("[WORKER PASSKEY FINISH LOGIN] Worker not found");
+    throw new ApiError("Worker not found", 404);
+  }
+
+  console.log("[WORKER PASSKEY FINISH LOGIN] Worker found:", worker.name);
+
+  await Passkey.findByIdAndUpdate(passkey._id, {
+    counter: currentCounter,
+    lastUsedAt: new Date(),
+  });
+
+  await markChallengeUsed(challengeDoc._id);
+
+  const authToken = createToken({ userId: worker._id, userType: "worker" });
+
+  const workerResponse = { ...worker._doc };
+  delete workerResponse.generatedPassword;
+
+  console.log("[WORKER PASSKEY FINISH LOGIN] Login successful for worker:", worker.name);
+
+  return {
+    status: "success",
+    message: "Login successful",
+    token: authToken,
+    data: {
+      worker: workerResponse,
+    },
   };
 };

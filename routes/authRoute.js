@@ -24,6 +24,10 @@ const {
   finishLogin,
   listPasskeys,
   revokePasskey,
+  beginWorkerRegistration,
+  finishWorkerRegistration,
+  beginWorkerLogin,
+  finishWorkerLogin,
 } = require("../services/passkeyAuthController");
 
 const router = express.Router();
@@ -505,5 +509,155 @@ router.post("/admin/passkey/revoke", verifyToken, revokePasskey);
  *         description: Invalid phone number or password
  */
 router.post("/worker/login", workerLogin);
+
+/**
+ * @swagger
+ * /auth/worker/passkey/register/begin:
+ *   post:
+ *     summary: Begin worker passkey registration
+ *     tags: [Auth]
+ *     x-category: system
+ *     x-status: "new"
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [origin]
+ *             properties:
+ *               origin:
+ *                 type: string
+ *                 example: "http://localhost:3000"
+ *     responses:
+ *       200:
+ *         description: Registration challenge created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: "success"
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Bad request
+ */
+router.post("/worker/passkey/register/begin", verifyToken, beginWorkerRegistration);
+
+/**
+ * @swagger
+ * /auth/worker/passkey/register/finish:
+ *   post:
+ *     summary: Finish worker passkey registration
+ *     tags: [Auth]
+ *     x-category: system
+ *     x-status: "new"
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [credential, origin, clientDataJSON]
+ *             properties:
+ *               credential:
+ *                 type: object
+ *               origin:
+ *                 type: string
+ *               clientDataJSON:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Passkey registered successfully
+ *       400:
+ *         description: Registration failed
+ */
+router.post("/worker/passkey/register/finish", verifyToken, finishWorkerRegistration);
+
+/**
+ * @swagger
+ * /auth/worker/passkey/login/begin:
+ *   post:
+ *     summary: Begin worker passkey login
+ *     tags: [Auth]
+ *     x-category: system
+ *     x-status: "new"
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [phoneNumber, origin]
+ *             properties:
+ *               phoneNumber:
+ *                 type: string
+ *                 example: "01012345678"
+ *               origin:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login challenge created
+ *       400:
+ *         description: Bad request
+ */
+router.post("/worker/passkey/login/begin", beginWorkerLogin);
+
+/**
+ * @swagger
+ * /auth/worker/passkey/login/finish:
+ *   post:
+ *     summary: Finish worker passkey login
+ *     tags: [Auth]
+ *     x-category: system
+ *     x-status: "new"
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [credential, origin, clientDataJSON]
+ *             properties:
+ *               credential:
+ *                 type: object
+ *               origin:
+ *                 type: string
+ *               clientDataJSON:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: "success"
+ *                 message:
+ *                   type: string
+ *                   example: "Login successful"
+ *                 token:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     worker:
+ *                       type: object
+ *       400:
+ *         description: Login failed
+ */
+router.post("/worker/passkey/login/finish", finishWorkerLogin);
 
 module.exports = router;

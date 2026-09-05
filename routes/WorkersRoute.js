@@ -14,6 +14,9 @@ const {
   getWorkerWithSalaryById,
   resetSalaryFieldsOnFirstDay,
   deleteWorkerFinancialRecord,
+  setWorkerImage,
+  setWorkerPassword,
+  getWorkerRepairCount,
 } = require("../services/WorksServices");
 
 const {
@@ -21,6 +24,8 @@ const {
 } = require("../utils/validator/phoneNumberValidator");
 
 const { checkPermission } = require("../middlewares/checkPermission");
+const { uploadSingleImage } = require("../middlewares/uploadImageMiddleware");
+const { processWorkerImage } = require("../middlewares/uploadImageCloud");
 
 /**
  * @swagger
@@ -398,5 +403,161 @@ router.route("/reset-salary").post(checkPermission("workers.salary.edit"), reset
  *         description: Worker or financial record not found
  */
 router.route("/:id/:type/:itemId").delete(checkPermission("workers.money.delete"), deleteWorkerFinancialRecord);
+
+/**
+ * @swagger
+ * /Worker/{id}/image:
+ *   post:
+ *     summary: Set profile image for a worker
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "6734de56e41091cfb6b02f7e"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [image]
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Worker image set successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *       404:
+ *         description: Worker not found
+ */
+router.route("/:id/image").post(
+  checkPermission("workers.edit"),
+  uploadSingleImage("image"),
+  processWorkerImage,
+  setWorkerImage
+);
+
+/**
+ * @swagger
+ * /Worker/{id}/password:
+ *   post:
+ *     summary: Set new password for a worker
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "6734de56e41091cfb6b02f7e"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword, newPassword]
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 description: Current password of the worker
+ *               newPassword:
+ *                 type: string
+ *                 description: New password (minimum 6 characters)
+ *                 minLength: 6
+ *     responses:
+ *       200:
+ *         description: Password updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid request (missing fields or password too short)
+ *       401:
+ *         description: Current password is incorrect
+ *       404:
+ *         description: Worker not found
+ */
+router.route("/:id/password").post(setWorkerPassword);
+
+/**
+ * @swagger
+ * /Worker/{id}/repairs/count:
+ *   get:
+ *     summary: Get number of repairs for a specific worker in date range
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "6734de56e41091cfb6b02f7e"
+ *       - in: query
+ *         name: startDate
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date (ISO format: YYYY-MM-DD)
+ *         example: "2024-01-01"
+ *       - in: query
+ *         name: endDate
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date (ISO format: YYYY-MM-DD)
+ *         example: "2024-01-31"
+ *     responses:
+ *       200:
+ *         description: Repair count retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     workerId:
+ *                       type: string
+ *                     workerName:
+ *                       type: string
+ *                     repairCount:
+ *                       type: number
+ *                     startDate:
+ *                       type: string
+ *                     endDate:
+ *                       type: string
+ *       400:
+ *         description: Missing startDate or endDate parameters
+ *       404:
+ *         description: Worker not found
+ */
+router.route("/:id/repairs/count").get(getWorkerRepairCount);
 
 module.exports = router;

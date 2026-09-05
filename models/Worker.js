@@ -54,6 +54,12 @@ const workerSchema = new mongoose.Schema(
       type: String,
       required: [true, "the generatedPassword is required"],
     },
+    image: {
+      type: String,
+    },
+    imagePublicId: {
+      type: String,
+    },
   },
   { timestamps: true },
 );

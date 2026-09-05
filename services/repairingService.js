@@ -271,6 +271,17 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
 
   const car = await Car.findOne({ carNumber });
+  
+  // Handle Reception name based on user type
+  let receptionName = req.body.Reception;
+  if (!receptionName && req.user && req.user._id) {
+    // If Reception not provided by admin, get worker name from JWT token
+    const worker = await Worker.findById(req.user._id);
+    if (worker) {
+      receptionName = worker.name;
+    }
+  }
+  
   const repair = await Repairing.create({
     client: car.ownerName,
     genId: newId,
@@ -296,6 +307,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     carId: car._id,
     generatedCode: car.generatedCode,
     technicians: technicians || [],
+    Reception: receptionName || null,
   });
 
   // Increment numberOfRepairs for each technician
@@ -1535,6 +1547,8 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
     new apiError(`there is no repair with this id ${id}`, 404);
   }
 
+  const carNumber = repair.carNumber;
+
   // Check if components array is not empty
   if (repair.component && repair.component.length > 0) {
     for (const component of repair.component) {
@@ -1568,6 +1582,19 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
   }
   await repair.deleteOne();
   console.log(`Repair document with ID ${id} successfully deleted.`);
+
+  // Check if all repairs for this car are completed
+  const allRepairs = await Repairing.find({ carNumber });
+  const allCompleted = allRepairs.every(r => r.complete === true);
+
+  if (allCompleted && allRepairs.length > 0) {
+    await Car.findOneAndUpdate(
+      { carNumber },
+      { State: "Good", repairing: false , completedServicesRatio:1},
+      { new: true }
+    );
+    console.log(`Car ${carNumber} status updated to Good with repairing=false`);
+  }
 
   res.status(200).json({ message: "deleted successfully" });
 });

@@ -1,5 +1,6 @@
 const Worker = require("../models/Worker");
 //const slugify = require("slugify");
+  const Repairing = require("../models/repairingModel");
 const asyncHandler = require("express-async-handler");
 const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
@@ -7,6 +8,7 @@ const moment = require("moment");
 const ApiFeatures = require("../utils/apiFeatures");
 const searchService = require("./searchService");
 const crypto = require("crypto");
+const cloudinary = require("../utils/cloudinary");
 
 // Function to generate a random password
 const generateWorkerPassword = () => {
@@ -360,6 +362,7 @@ exports.resetSalaryFieldsOnFirstDay = asyncHandler(async (req, res, next) => {
     if (currentMonth > greaterSavedMonth || currentYear > greaterSavedYear) {
       worker.salaryAfterProcces = worker.salary;
       worker.salaryAfterReword = worker.salary;
+      worker.numberOfRepairs = 0;
       await worker.save();
     }
   }
@@ -422,5 +425,125 @@ exports.deleteWorkerFinancialRecord = asyncHandler(async (req, res, next) => {
   res.status(200).json({ 
     data: workerResponse, 
     message: `${type.slice(0, -1)} deleted successfully` 
+  });
+});
+
+// @desc Set worker profile image
+// @Route POST /api/v1/Worker/:id/image
+// @access private
+exports.setWorkerImage = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { image, imagePublicId } = req.body;
+
+  if (!image || !imagePublicId) {
+    return next(new apiError("Image data is required", 400));
+  }
+
+  const worker = await Worker.findById(id);
+  if (!worker) {
+    return next(new apiError("Worker not found", 404));
+  }
+
+  // Delete old image from Cloudinary if exists
+  if (worker.imagePublicId) {
+    try {
+      await cloudinary.uploader.destroy(worker.imagePublicId);
+    } catch (err) {
+      console.log("Error deleting old image:", err);
+    }
+  }
+
+  worker.image = image;
+  worker.imagePublicId = imagePublicId;
+  await worker.save();
+
+  // Remove salary fields from response
+  const workerResponse = worker.toObject();
+  delete workerResponse.salary;
+  delete workerResponse.salaryAfterProcces;
+  delete workerResponse.salaryAfterReword;
+
+  res.status(200).json({ data: workerResponse });
+});
+
+// @desc Set worker password
+// @Route POST /api/v1/Worker/:id/password
+// @access private
+exports.setWorkerPassword = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return next(new apiError("Current password and new password are required", 400));
+  }
+
+  if (newPassword.length < 6) {
+    return next(new apiError("New password must be at least 6 characters", 400));
+  }
+
+  const worker = await Worker.findById(id);
+  if (!worker) {
+    return next(new apiError("Worker not found", 404));
+  }
+
+  // Verify current password
+  if (worker.generatedPassword !== currentPassword) {
+    return next(new apiError("Current password is incorrect", 401));
+  }
+
+  // Update password
+  worker.generatedPassword = newPassword;
+  await worker.save();
+
+  // Remove salary fields from response
+  const workerResponse = worker.toObject();
+  delete workerResponse.salary;
+  delete workerResponse.salaryAfterProcces;
+  delete workerResponse.salaryAfterReword;
+
+  res.status(200).json({ 
+    data: workerResponse,
+    message: "Password updated successfully" 
+  });
+});
+
+// @desc Get number of repairs for specific worker in date range
+// @Route GET /api/v1/Worker/:id/repairs/count
+// @access private
+exports.getWorkerRepairCount = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { startDate, endDate } = req.query;
+
+  if (!startDate || !endDate) {
+    return next(new apiError("startDate and endDate query parameters are required", 400));
+  }
+
+  const worker = await Worker.findById(id);
+  if (!worker) {
+    return next(new apiError("Worker not found", 404));
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  end.setHours(23, 59, 59, 999); // Include the entire end date
+
+  // Count repairs where this worker is listed as a technician
+
+  const repairCount = await Repairing.countDocuments({
+    "technicians.workerId": worker._id,
+    createdAt: {
+      $gte: start,
+      $lte: end,
+    },
+  });
+
+  res.status(200).json({
+    data: {
+      workerId: worker._id,
+      workerName: worker.name,
+      repairCount,
+      startDate,
+      endDate,
+    },
   });
 });

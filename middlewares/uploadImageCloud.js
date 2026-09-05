@@ -1,6 +1,7 @@
 const cloudinary = require("../utils/cloudinary");
 const ApiError = require("../utils/apiError");
 const Car = require("../models/Car");
+const Worker = require("../models/Worker");
 const { removeBgExternal } = require("../utils/backgroundRemover");
 
 // @desc    save user image on cloudinary
@@ -276,4 +277,50 @@ exports.deleteUserImage = async (req, res, next) => {
   req.body.image = null;
   req.body.imagePublicId = null;
   next();
+};
+
+// @desc    save worker image on cloudinary
+// @route   Post /api/v1/Worker/:id/image
+// @access  private
+exports.processWorkerImage = async (req, res, next) => {
+  if (!req.file || !req.file.buffer) return next();
+
+  try {
+    const worker = await Worker.findById(req.params.id);
+    if (!worker) {
+      return next(new ApiError("Worker not found", 404));
+    }
+
+    // Delete existing image if it exists
+    if (worker.imagePublicId) {
+      await cloudinary.uploader.destroy(worker.imagePublicId);
+    }
+
+    const bgRemovedBuffer = await removeBgExternal(req.file.buffer);
+
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "Workers",
+          resource_type: "image",
+          format: "png",
+          transformation: [
+            { width: 500, height: 500, crop: "fill", gravity: "auto" },
+          ],
+        },
+        (err, uploadResult) => {
+          if (err) return reject(err);
+          resolve(uploadResult);
+        },
+      );
+      stream.end(bgRemovedBuffer);
+    });
+
+    req.body.image = result.secure_url;
+    req.body.imagePublicId = result.public_id;
+
+    next();
+  } catch (err) {
+    next(new ApiError(`Error processing image: ${err.message}`, 500));
+  }
 };
