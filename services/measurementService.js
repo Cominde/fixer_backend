@@ -309,7 +309,6 @@ exports.walkInMeasurement = asyncHandler(async (req, res, next) => {
     Note1,
     Note2,
     distance: distance || 0,
-    nextRepairDistance,
     acceptance: false,
     carId: null,
     generatedCode: null,
