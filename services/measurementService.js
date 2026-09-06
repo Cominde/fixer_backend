@@ -424,14 +424,8 @@ exports.acceptMeasurement = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const { acceptance } = req.body;
 
-  const validAcceptanceValues = ["pending", "accepted", "rejected"];
-  if (!validAcceptanceValues.includes(acceptance)) {
-    return next(
-      new apiError(
-        `acceptance must be one of: ${validAcceptanceValues.join(", ")}`,
-        400,
-      ),
-    );
+  if (typeof acceptance !== "boolean") {
+    return next(new apiError("acceptance must be a boolean value (true or false)", 400));
   }
 
   const measurement = await Measurement.findById(id);
@@ -446,10 +440,12 @@ exports.acceptMeasurement = asyncHandler(async (req, res, next) => {
     );
   }
 
-  measurement.acceptance = acceptance;
+  // Convert boolean to string enum value
+  const acceptanceValue = acceptance === true ? "accepted" : "rejected";
+  measurement.acceptance = acceptanceValue;
   measurement.acceptedAt = new Date();
 
-  if (acceptance === "accepted") {
+  if (acceptance === true) {
     // Convert to repair
     let newId = 0;
     const const_part_of_id = "2021";
@@ -557,17 +553,11 @@ exports.acceptMeasurement = asyncHandler(async (req, res, next) => {
       repair: repair,
       message: "Measurement accepted and converted to repair",
     });
-  } else if (acceptance === "rejected") {
-    await measurement.save();
-    res.status(200).json({
-      data: measurement,
-      message: "Measurement rejected",
-    });
   } else {
     await measurement.save();
     res.status(200).json({
       data: measurement,
-      message: "Measurement status updated to pending",
+      message: "Measurement rejected",
     });
   }
 });
