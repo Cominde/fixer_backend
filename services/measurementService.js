@@ -151,7 +151,7 @@ exports.createMeasurement = asyncHandler(async (req, res, next) => {
     distance: distance || 0,
     nextRepairDistance,
     nextRepairDate,
-    acceptance: "pending",
+    acceptance: false,
     carId: car._id,
     generatedCode: car.generatedCode,
   });
@@ -309,7 +309,7 @@ exports.walkInMeasurement = asyncHandler(async (req, res, next) => {
     Note1,
     Note2,
     distance: distance || 0,
-    acceptance: "pending",
+    acceptance: false,
     carId: null,
     generatedCode: null,
   });
@@ -425,7 +425,7 @@ exports.acceptMeasurement = asyncHandler(async (req, res, next) => {
   const { acceptance } = req.body;
 
   if (typeof acceptance !== "boolean") {
-    return next(new apiError("acceptance must be a boolean value (true or false)", 400));
+    return next(new apiError("acceptance must be a boolean value", 400));
   }
 
   const measurement = await Measurement.findById(id);
@@ -440,9 +440,7 @@ exports.acceptMeasurement = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Convert boolean to string enum value
-  const acceptanceValue = acceptance === true ? "accepted" : "rejected";
-  measurement.acceptance = acceptanceValue;
+  measurement.acceptance = acceptance;
   measurement.acceptedAt = new Date();
 
   if (acceptance === true) {
