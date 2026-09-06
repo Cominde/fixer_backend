@@ -542,12 +542,10 @@ exports.acceptMeasurement = asyncHandler(async (req, res, next) => {
       generatedCode: measurement.generatedCode,
     });
 
-    measurement.convertedToRepair = true;
-    measurement.repairId = repair._id;
-    await measurement.save();
+    // Delete the measurement after converting to repair
+    await Measurement.findByIdAndDelete(id);
 
     res.status(200).json({
-      data: measurement,
       repair: repair,
       message: "Measurement accepted and converted to repair",
     });
