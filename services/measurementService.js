@@ -151,7 +151,7 @@ exports.createMeasurement = asyncHandler(async (req, res, next) => {
     distance: distance || 0,
     nextRepairDistance,
     nextRepairDate,
-    acceptance: false,
+    acceptance: "pending",
     carId: car._id,
     generatedCode: car.generatedCode,
   });
@@ -309,7 +309,7 @@ exports.walkInMeasurement = asyncHandler(async (req, res, next) => {
     Note1,
     Note2,
     distance: distance || 0,
-    acceptance: false,
+    acceptance: "pending",
     carId: null,
     generatedCode: null,
   });
@@ -424,8 +424,14 @@ exports.acceptMeasurement = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const { acceptance } = req.body;
 
-  if (typeof acceptance !== "boolean") {
-    return next(new apiError("acceptance must be a boolean value", 400));
+  const validAcceptanceValues = ["pending", "accepted", "rejected"];
+  if (!validAcceptanceValues.includes(acceptance)) {
+    return next(
+      new apiError(
+        `acceptance must be one of: ${validAcceptanceValues.join(", ")}`,
+        400,
+      ),
+    );
   }
 
   const measurement = await Measurement.findById(id);
@@ -443,7 +449,7 @@ exports.acceptMeasurement = asyncHandler(async (req, res, next) => {
   measurement.acceptance = acceptance;
   measurement.acceptedAt = new Date();
 
-  if (acceptance === true) {
+  if (acceptance === "accepted") {
     // Convert to repair
     let newId = 0;
     const const_part_of_id = "2021";
@@ -551,11 +557,17 @@ exports.acceptMeasurement = asyncHandler(async (req, res, next) => {
       repair: repair,
       message: "Measurement accepted and converted to repair",
     });
-  } else {
+  } else if (acceptance === "rejected") {
     await measurement.save();
     res.status(200).json({
       data: measurement,
       message: "Measurement rejected",
+    });
+  } else {
+    await measurement.save();
+    res.status(200).json({
+      data: measurement,
+      message: "Measurement status updated to pending",
     });
   }
 });

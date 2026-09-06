@@ -102,8 +102,9 @@ const measurementSchema = new mongoose.Schema(
       type: Date,
     },
     acceptance: {
-      type: Boolean,
-      default: false,
+      type: String,
+      enum: ["pending", "accepted", "rejected"],
+      default: "pending",
     },
     acceptedAt: {
       type: Date,
