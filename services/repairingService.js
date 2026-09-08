@@ -43,11 +43,11 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     technicians,
   } = req.body;
 
-  // For non-periodic repairs, get nextRepairDate and nextRepairDistance from last periodic repair
+  // For non-periodic repairs or when nextRepairDate/nextRepairDistance are empty, get values from last periodic repair
   let finalDistance = distance;
   let nextDistance = nextRepairDistance;
   let nextRDate = nextRepairDate;
-  if (type === "nonPeriodic") {
+  if (type === "nonPeriodic" || nextRepairDate === "" || nextRepairDistance === "") {
     const lastPeriodicRepair = await Repairing.findOne({
       carNumber: carNumber,
       type: "periodic",
