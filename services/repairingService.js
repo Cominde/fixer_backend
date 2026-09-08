@@ -1590,7 +1590,9 @@ exports.deleteRepair = asyncHandler(async (req, res, next) => {
   if (allCompleted && allRepairs.length > 0) {
     await Car.findOneAndUpdate(
       { carNumber },
-      { State: "Good", repairing: false , completedServicesRatio:1},
+      { State: "Good", repairing: false , completedServicesRatio:1 ,repairing_id:undefined,
+        lastRepairDate:undefined,
+      },
       { new: true }
     );
     console.log(`Car ${carNumber} status updated to Good with repairing=false`);
