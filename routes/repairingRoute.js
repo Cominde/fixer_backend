@@ -129,6 +129,17 @@ const { checkPermission } = require("../middlewares/checkPermission");
  *               Note2:
  *                 type: string
  *                 example: "NEXT SERVICE: ..."
+ *               receptionEngineer:
+ *                 type: string
+ *                 description: Admin sends "NA"; worker sends their display name
+ *                 example: "NA"
+ *               representative:
+ *                 type: string
+ *                 description: Optional sales representative / مندوب
+ *                 example: "Ahmed"
+ *               delegate:
+ *                 type: string
+ *                 description: Alias for representative
  *     responses:
  *       201:
  *         description: Repair created successfully
@@ -213,6 +224,12 @@ router.route("/").post(checkPermission("repairs.add"), createRepairing).get(chec
  *                 type: string
  *               distance:
  *                 type: number
+ *               receptionEngineer:
+ *                 type: string
+ *                 example: "NA"
+ *               representative:
+ *                 type: string
+ *                 example: "Ahmed"
  *     responses:
  *       201:
  *         description: Walk-in repair created successfully

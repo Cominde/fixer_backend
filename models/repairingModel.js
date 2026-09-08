@@ -134,8 +134,23 @@ const repairingSchema = new mongoose.Schema(
         },
       },
     ],
+    /// Legacy reception field. Kept in sync with receptionEngineer.
     Reception: {
       type: String,
+    },
+    /// Reception desk attribution on the invoice (Admin → "NA", Worker → name).
+    receptionEngineer: {
+      type: String,
+      trim: true,
+      maxlength: [80, "receptionEngineer is too long"],
+      default: "NA",
+    },
+    /// Optional sales representative / مندوب shown on the invoice.
+    representative: {
+      type: String,
+      trim: true,
+      maxlength: [80, "representative is too long"],
+      default: null,
     },
   },
 
