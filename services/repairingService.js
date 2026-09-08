@@ -222,7 +222,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
 
   reCar.save();
   const currentDate = new Date();
-  const parsedNextPerDate = new Date(nextRepairDate);
+  const parsedNextPerDate = new Date(nextRDate);
   if (completedServices === totalServicesCount) {
     complete = true;
     const lastRepairDate = new Date();
@@ -230,7 +230,6 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
       { carNumber: carNumber },
       {
         lastRepairDate: lastRepairDate,
-        nextRepairDate: nextRepairDate,
         repairing: !complete,
       },
       { new: true },
@@ -266,7 +265,7 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   await car_state.save();
   const car_ratio = await Car.findOneAndUpdate(
     { carNumber: carNumber },
-    { completedServicesRatio: completedServicesRatio, nextRepairDistance },
+    { completedServicesRatio: completedServicesRatio},
     { new: true },
   );
 
