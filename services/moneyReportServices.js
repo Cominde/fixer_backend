@@ -88,6 +88,7 @@ exports.createReport = asyncHandler(async (req, res, next) => {
         $gte: date,
         $lt: getUTCDate(year, month),
       },
+      complete:true
     });
 
     totalIncome = repairs.reduce(

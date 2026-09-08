@@ -45,20 +45,35 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
 
   // For non-periodic repairs, get distance from last periodic repair if not provided
   let finalDistance = distance;
-  if (
-    type === "nonPeriodic" &&
-    (distance === undefined || distance === null || distance === 0)
-  ) {
+  let nextDistance = nextRepairDistance;
+  let nextRDate = nextRepairDate;
+  if (type === "nonPeriodic" ) {
     const lastPeriodicRepair = await Repairing.findOne({
       carNumber: carNumber,
       type: "periodic",
     }).sort({ createdAt: -1 });
-
-    if (lastPeriodicRepair && lastPeriodicRepair.distance) {
+    if (lastPeriodicRepair ) {
       finalDistance = lastPeriodicRepair.distance;
-    } else {
-      finalDistance = 0;
+      if (lastPeriodicRepair.distance && 
+        (distance === undefined || distance === null || distance === 0)) {
+          finalDistance = lastPeriodicRepair.distance;
+      } else {
+          finalDistance = 0;
+        }
+      if (lastPeriodicRepair.nextRepairDistance && 
+        (nextRepairDistance === undefined || nextRepairDistance === null || nextRepairDistance === 0)){
+          nextDistance = lastPeriodicRepair.nextRepairDistance
+        }else {
+          nextDistance = 0;
+        }
+      if (lastPeriodicRepair.nextRepairDate && 
+        (nextRepairDate === undefined || nextRepairDate === null )){
+           nextRDate = lastPeriodicRepair.nextRepairDate
+        }else {
+          nextRDate = undefined;
+        }
     }
+
   }
   if (req.body.manually == "True" || req.body.manually == true) {
     const id = req.body.id;
@@ -212,6 +227,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   reCar.periodicRepairs = periodicRepairs;
   reCar.nonPeriodicRepairs = nonperiodicRepairs;
   reCar.distances = finalDistance;
+  reCar.nextRepairDistance = nextDistance;
+  reCar.nextRepairDate = nextRDate;
 
   reCar.save();
   const currentDate = new Date();
@@ -302,8 +319,8 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     Note1,
     Note2,
     distance: finalDistance,
-    nextRepairDistance,
-    nextRepairDate: nextRepairDate,
+    nextRepairDistance:nextDistance,
+    nextRepairDate: nextRDate,
     carId: car._id,
     generatedCode: car.generatedCode,
     technicians: technicians || [],
