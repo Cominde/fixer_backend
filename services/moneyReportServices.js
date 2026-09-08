@@ -353,6 +353,7 @@ exports.getmonthWork = asyncHandler(async (req, res, next) => {
       $gte: startDate,
       $lt: endDate,
     },
+    complete:true
   }).select("client brand category model createdAt priceAfterDiscount");
 
   const workers = await Worker.find().select("name salary");

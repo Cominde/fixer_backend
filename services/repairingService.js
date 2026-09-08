@@ -43,37 +43,27 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     technicians,
   } = req.body;
 
-  // For non-periodic repairs, get distance from last periodic repair if not provided
+  // For non-periodic repairs, get nextRepairDate and nextRepairDistance from last periodic repair
   let finalDistance = distance;
   let nextDistance = nextRepairDistance;
   let nextRDate = nextRepairDate;
-  if (type === "nonPeriodic" ) {
+  if (type === "nonPeriodic") {
     const lastPeriodicRepair = await Repairing.findOne({
       carNumber: carNumber,
       type: "periodic",
     }).sort({ createdAt: -1 });
-    if (lastPeriodicRepair ) {
-      finalDistance = lastPeriodicRepair.distance;
-      if (lastPeriodicRepair.distance && 
-        (distance === undefined || distance === null || distance === 0)) {
-          finalDistance = lastPeriodicRepair.distance;
-      } else {
-          finalDistance = 0;
-        }
-      if (lastPeriodicRepair.nextRepairDistance && 
-        (nextRepairDistance === undefined || nextRepairDistance === null || nextRepairDistance === 0)){
-          nextDistance = lastPeriodicRepair.nextRepairDistance
-        }else {
-          nextDistance = 0;
-        }
-      if (lastPeriodicRepair.nextRepairDate && 
-        (nextRepairDate === undefined || nextRepairDate === null )){
-           nextRDate = lastPeriodicRepair.nextRepairDate
-        }else {
-          nextRDate = undefined;
-        }
-    }
 
+    if (lastPeriodicRepair) {
+      // Use nextRepairDistance and nextRepairDate from the last periodic repair
+      nextDistance = lastPeriodicRepair.nextRepairDistance || 0;
+      nextRDate = lastPeriodicRepair.nextRepairDate;
+      finalDistance = lastPeriodicRepair.distance || 0;
+    } else {
+      // No periodic repair found, set to default values
+      nextDistance = 0;
+      nextRDate = undefined;
+      finalDistance = 0;
+    }
   }
   if (req.body.manually == "True" || req.body.manually == true) {
     const id = req.body.id;
