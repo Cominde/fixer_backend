@@ -13,6 +13,26 @@ const { sendLowQuantityNotification } = require("./notificationFire");
 const asyncHandler = require("express-async-handler");
 const { body } = require("express-validator");
 const { ObjectId } = require("bson");
+const {
+  resolveReceptionEngineer,
+  resolveRepresentative,
+  hasReceptionInput,
+  hasRepresentativeInput,
+  sanitizePersonName,
+} = require("../utils/invoiceAttribution");
+
+async function resolveReceptionForRequest(req) {
+  if (hasReceptionInput(req.body)) {
+    return resolveReceptionEngineer(req.body);
+  }
+  if (req.user && req.user._id) {
+    const worker = await Worker.findById(req.user._id);
+    if (worker && worker.name) {
+      return sanitizePersonName(worker.name, { fallback: "NA" }) || "NA";
+    }
+  }
+  return "NA";
+}
 
 // @desc create a repairing
 // @Route POST /api/v1/repairing
@@ -220,24 +240,13 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   reCar.nextRepairDistance = nextDistance;
   reCar.nextRepairDate = nextRDate;
 
-  reCar.save();
   const currentDate = new Date();
   const parsedNextPerDate = new Date(nextRDate);
   if (completedServices === totalServicesCount) {
     complete = true;
     const lastRepairDate = new Date();
-    const car = await Car.findOneAndUpdate(
-      { carNumber: carNumber },
-      {
-        lastRepairDate: lastRepairDate,
-        repairing: !complete,
-      },
-      { new: true },
-    );
-
-    if (!car) {
-      return next(new apiError(`No car for this number ${carNumber}`, 404));
-    }
+    reCar.lastRepairDate = lastRepairDate;
+    reCar.repairing = !complete
   }
 
   const completedServicesRatio =
@@ -253,41 +262,17 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   } else {
     state = "Need to check";
   }
-  const car_state = await Car.findOneAndUpdate(
-    { carNumber: carNumber },
-    { State: state },
-    { new: true },
-  );
+  reCar.State = state;
+  reCar.completedServicesRatio = completedServicesRatio
 
-  if (!car_state) {
-    return next(new apiError(`No car for this number ${carNumber}`, 404));
-  }
-  await car_state.save();
-  const car_ratio = await Car.findOneAndUpdate(
-    { carNumber: carNumber },
-    { completedServicesRatio: completedServicesRatio},
-    { new: true },
-  );
-
-  if (!car_ratio) {
-    return next(new apiError(`No car for this number ${carNumber}`, 404));
-  }
-  await car_ratio.save();
+  reCar.save();
   const expectedDate = new Date();
   expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
 
   const car = await Car.findOne({ carNumber });
-  
-  // Handle Reception name based on user type
-  let receptionName = req.body.Reception;
-  if (!receptionName && req.user && req.user._id) {
-    // If Reception not provided by admin, get worker name from JWT token
-    const worker = await Worker.findById(req.user._id);
-    if (worker) {
-      receptionName = worker.name;
-    }
-  }
-  
+  const receptionEngineer = await resolveReceptionForRequest(req);
+  const representative = resolveRepresentative(req.body);
+
   const repair = await Repairing.create({
     client: car.ownerName,
     genId: newId,
@@ -313,7 +298,9 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     carId: car._id,
     generatedCode: car.generatedCode,
     technicians: technicians || [],
-    Reception: receptionName || null,
+    Reception: receptionEngineer,
+    receptionEngineer,
+    representative,
   });
 
   // Increment numberOfRepairs for each technician
@@ -339,7 +326,14 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
     }
     await car.save();
   }
-  res.status(200).json();
+  res.status(200).json({
+    data: {
+      _id: repair._id,
+      genId: repair.genId,
+      receptionEngineer: repair.receptionEngineer,
+      representative: repair.representative,
+    },
+  });
 });
 
 // @desc    Create walk-in repair (without car/user in system)
@@ -512,6 +506,9 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
   const expectedDate = new Date();
   expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
 
+  const receptionEngineer = await resolveReceptionForRequest(req);
+  const representative = resolveRepresentative(req.body);
+
   // Create walk-in repair without car reference
   const repair = await Repairing.create({
     client: clientName,
@@ -534,6 +531,9 @@ exports.walkInRepair = asyncHandler(async (req, res, next) => {
     Note2,
     distance: distance || 0,
     technicians: technicians || [],
+    Reception: receptionEngineer,
+    receptionEngineer,
+    representative,
   });
 
   // Increment numberOfRepairs for each technician
@@ -932,55 +932,38 @@ exports.getRepairsReport = asyncHandler(async (req, res, next) => {
   const Repair = await Repairing.findById(id);
 
   if (!Repair) {
-    return next(new apiError(`Can't find car with this id ${id}`, 404));
+    return next(new apiError(`Can't find repair with this id ${id}`, 404));
   }
 
-  const carInfo = await Car.findById(Repair.carId);
+  const carInfo = Repair.carId
+    ? await Car.findById(Repair.carId)
+    : await Car.findOne({ carNumber: Repair.carNumber });
+  const userInfo = carInfo
+    ? await User.findOne({ name: carInfo.ownerName })
+    : null;
 
-  if (!carInfo) {
-    if (!Repair.carId) {
-      const info = {
-        name: Repair.client,
-        //phone: userInfo.phoneNumber,
-        carNumber: Repair.carNumber,
-        brand: Repair.brand,
-        category: Repair.category,
-        model: Repair.model,
-        distances: Repair.distance,
-        note1: Repair.Note1,
-        note2: Repair.Note2,
-      };
-      res.status(200).json({
-        repair: Repair,
-        data: info,
-      });
-    }
-    return next(
-      new apiError(`Can't find car with this id ${Repair.carId}`, 404),
-    );
-  }
-
-  const userInfo = await User.findOne({ name: { $in: carInfo.ownerName } });
-
-  if (!userInfo) {
-    return next(
-      new apiError(`Can't find car for this user ${carInfo.ownerName}`, 404),
-    );
-  }
+  const receptionEngineer =
+    Repair.receptionEngineer || Repair.Reception || "NA";
+  const representative = Repair.representative || null;
 
   const info = {
-    name: carInfo.ownerName,
-    phone: userInfo.phoneNumber,
-    carNumber: carInfo.carNumber,
-    chassisNumber: carInfo.chassisNumber,
-    brand: carInfo.brand,
-    color: carInfo.color,
-    distances: carInfo.distances,
-    model: carInfo.model,
-    clientCode: carInfo.generatedCode,
+    name: carInfo?.ownerName || Repair.client || null,
+    phone: userInfo?.phoneNumber || null,
+    carNumber: carInfo?.carNumber || Repair.carNumber || null,
+    chassisNumber: carInfo?.chassisNumber || null,
+    brand: carInfo?.brand || Repair.brand || null,
+    category: carInfo?.category || Repair.category || null,
+    color: carInfo?.color || null,
+    distances: carInfo?.distances ?? Repair.distance ?? null,
+    model: carInfo?.model || Repair.model || null,
+    clientCode: carInfo?.generatedCode || Repair.generatedCode || null,
     note1: Repair.Note1,
     note2: Repair.Note2,
+    receptionEngineer,
+    representative,
+    Reception: receptionEngineer,
   };
+
   res.status(200).json({
     repair: Repair,
     data: info,
@@ -1491,6 +1474,17 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
     repair.Note2 = req.body.Note2;
     repair.distance = req.body.distance;
   }
+
+  // Invoice attribution — only overwrite when the client sends the keys.
+  if (hasReceptionInput(req.body)) {
+    const receptionEngineer = resolveReceptionEngineer(req.body);
+    repair.receptionEngineer = receptionEngineer;
+    repair.Reception = receptionEngineer;
+  }
+  if (hasRepresentativeInput(req.body)) {
+    repair.representative = resolveRepresentative(req.body);
+  }
+
   repair.totalPrice = totalPrice;
   repair.priceAfterDiscount = priceAfterDiscount;
   if (req.body.technicians && req.body.technicians.length > 0) {
