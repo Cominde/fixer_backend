@@ -1,11 +1,16 @@
 {
   "name": "fixer_backend-main",
   "version": "1.0.0",
-  "main": "app.js",
+  "main": "dist/server.js",
+  "engines": {
+    "// node": "jsonwebtoken pulls in buffer-equal-constant-time, which reads buffer.SlowBuffer. Node 24 removed it, so the app cannot start on 24+.",
+    "node": ">=18 <24"
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1029.0",
     "@google/generative-ai": "^0.24.1",
     "@simplewebauthn/server": "^13.3.0",
+    "@types/node": "^22.1.0",
     "accepts": "^1.3.8",
     "ansi-colors": "^4.1.3",
     "ansi-regex": "^5.0.1",
@@ -197,6 +202,7 @@
     "toidentifier": "^1.0.1",
     "tr46": "^4.1.1",
     "type-is": "^1.6.18",
+    "typescript": "^5.9.3",
     "undici-types": "^5.28.3",
     "unpipe": "^1.0.0",
     "useragent": "^2.3.0",
@@ -218,16 +224,21 @@
     "yocto-queue": "^0.1.0"
   },
   "devDependencies": {
-    "@types/node": "^22.1.0",
+    "@types/jest": "^30.0.0",
     "mocha": "^10.3.0"
   },
   "scripts": {
-    "start:dev": "nodemon server.js",
-    "start:prod": "cross-env NODE_ENV=production node server.js",
-    "start": "node server.js",
-    "backup": "node scripts/backupDatabase.js",
-    "restore": "node scripts/restoreDatabase.js",
-    "backup:scheduler": "node scripts/backupScheduler.js"
+    "build": "tsc -p tsconfig.json && node tools/copy-assets.js",
+    "prestart": "npm run build",
+    "start": "node dist/server.js",
+    "dev": "npm run start:dev",
+    "start:dev": "nodemon --ext ts,json --watch . --ignore dist --exec \"npm run build && node --enable-source-maps dist/server.js\"",
+    "start:prod": "NODE_ENV=production node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node dist/utils/invoiceAttribution.test.js",
+    "backup": "node dist/scripts/backupDatabase.js",
+    "restore": "node dist/scripts/restoreDatabase.js",
+    "backup:scheduler": "node dist/scripts/backupScheduler.js"
   },
   "keywords": [],
   "author": "",
