@@ -315,7 +315,7 @@ router.route("/add/:id").post(checkPermission("cars.add"), addCar);
  *         description: Car not found
  */
 router
-  .route("/updateCar/:id")
+  .route("/update/:id")
 
   .put(
     checkPermission("cars.edit"),
