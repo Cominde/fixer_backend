@@ -107,11 +107,14 @@ const searchService = async ({
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CAR SEARCH  — handles all Arabic car number format variants
+//  CAR SEARCH  — handles all Arabic car number format variants and attribute search
 // ─────────────────────────────────────────────────────────────────────────────
 const searchCarService = async ({
   Model,
   searchString,
+  brand,
+  category,
+  model,
   baseFilter = {},
   page = 1,
   limit = 10,
@@ -123,15 +126,27 @@ const searchCarService = async ({
   limit = parseInt(limit) || 10;
   const skip = (page - 1) * limit;
 
-  const normalized = normalizeCarNumber(searchString);
-  const variants = buildCarNumberVariants(normalized);
-  const regexPattern = variants.map(escapeRegex).join("|");
-  const searchRegex = new RegExp(regexPattern, "i");
+  const mongoQuery = { ...baseFilter };
 
-  const mongoQuery = {
-    ...baseFilter,
-    [searchField]: { $regex: searchRegex }, // ← uses the field passed in
-  };
+  // Search by car number (with Arabic format variants) if searchString is provided
+  if (searchString) {
+    const normalized = normalizeCarNumber(searchString);
+    const variants = buildCarNumberVariants(normalized);
+    const regexPattern = variants.map(escapeRegex).join("|");
+    const searchRegex = new RegExp(regexPattern, "i");
+    mongoQuery[searchField] = { $regex: searchRegex };
+  }
+
+  // Search by attributes (brand, category, model) - optional filters
+  if (brand && brand.trim()) {
+    mongoQuery.brand = { $regex: new RegExp(escapeRegex(brand.trim()), "i") };
+  }
+  if (category && category.trim()) {
+    mongoQuery.category = { $regex: new RegExp(escapeRegex(category.trim()), "i") };
+  }
+  if (model && model.trim()) {
+    mongoQuery.model = { $regex: new RegExp(escapeRegex(model.trim()), "i") };
+  }
 
   let mongooseQuery = Model.find(mongoQuery).sort(sort).skip(skip).limit(limit);
   if (select) mongooseQuery = mongooseQuery.select(select);

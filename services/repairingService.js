@@ -64,9 +64,9 @@ exports.createRepairing = asyncHandler(async (req, res, next) => {
   } = req.body;
 
   // For non-periodic repairs or when nextRepairDate/nextRepairDistance are empty, get values from last periodic repair
-  let finalDistance = distance;
-  let nextDistance = nextRepairDistance;
-  let nextRDate = nextRepairDate;
+  let finalDistance = req.body.distance;
+  let nextDistance = req.body.nextRepairDistance;
+  let nextRDate = req.body.nextRepairDate;
   if (type === "nonPeriodic" || nextRepairDate === "" || nextRepairDistance === "") {
     const lastPeriodicRepair = await Repairing.findOne({
       carNumber: carNumber,
@@ -1392,11 +1392,19 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
   }
 
   if (req.body.nextRepairDate) {
-    if (!repair.complete) {
+    if (repair.complete) {
       await Car.findByIdAndUpdate(
         repair.carId,
         {
           lastRepairDate: new Date(),
+          nextRepairDate: req.body.nextRepairDate,
+        },
+        { new: true },
+      );
+    } else{
+      await Car.findByIdAndUpdate(
+        repair.carId,
+        {
           nextRepairDate: req.body.nextRepairDate,
         },
         { new: true },
@@ -1406,13 +1414,11 @@ exports.updateRepair = asyncHandler(async (req, res, next) => {
   }
 
   if (req.body.nextRepairDistance) {
-    if (!repair.complete) {
       await Car.findByIdAndUpdate(
         repair.carId,
         { nextRepairDistance: req.body.nextRepairDistance },
         { new: true },
       );
-    }
     repair.nextRepairDistance = req.body.nextRepairDistance;
   }
 
