@@ -86,6 +86,9 @@ const { checkPermission } = require("../middlewares/checkPermission");
  *                 type: number
  *               nextRepairDistance:
  *                 type: number
+ *               nextRepairDate:
+ *                 type: string
+ *                 format: date-time
  *     responses:
  *       201:
  *         description: Measurement created successfully

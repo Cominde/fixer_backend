@@ -28,6 +28,7 @@ export const createMeasurement = asyncHandler(async (req, res, next) => {
     Note2,
     distance,
     nextRepairDistance,
+    nextRepairDate,
   } = req.body;
 
   // Generate measurement number
