@@ -115,6 +115,6 @@ export const searchCom = asyncHandler(async (req, res, next) => {
     data: documents,
   });
   /* sortedCategory = documents.sort(
-    (a, b) => (new Date(b.createdAt) as any) - (new Date(a.createdAt) as any)
+    (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
   );*/
 });
