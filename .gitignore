@@ -1,8 +1,20 @@
+# Dependencies
 node_modules/
-scripts/*
-config.env
 
-fixer_backend/
-config/serviceAccountKey.json
-md/*.md
-tests/*
+# Build output
+dist/
+
+# Env / secrets
+.env
+config.env
+src/config/serviceAccountKey.json
+
+# Backups / local junk
+backups/
+*.log
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
