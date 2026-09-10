@@ -1510,7 +1510,7 @@ export const deleteRepair = asyncHandler(async (req, res, next) => {
   // Find repair by ID
   const repair = await Repairing.findById(id);
   if (!repair) {
-    new apiError(`there is no repair with this id ${id}`, 404);
+    return next(new apiError(`there is no repair with this id ${id}`, 404));
   }
 
   const carNumber = repair.carNumber;
@@ -1525,7 +1525,7 @@ export const deleteRepair = asyncHandler(async (req, res, next) => {
         inventoryItem.quantity += quantity;
         await inventoryItem.save({ validateBeforeSave: false });
       } else {
-        new apiError(`there is no component with this id ${componentId}`, 404);
+        return next(new apiError(`there is no component with this id ${componentId}`, 404));
       }
     }
   }
@@ -1546,6 +1546,20 @@ export const deleteRepair = asyncHandler(async (req, res, next) => {
       }
     }
   }
+
+  // Update car periodic/nonPeriodic repairs count
+  if(repair.carId){
+    const car = await Car.findById(repair.carId);
+    if(car){
+      if(repair.type === "periodic"){
+        car.periodicRepairs = Math.max(0, car.periodicRepairs - 1);
+      } else{
+        car.nonPeriodicRepairs = Math.max(0, car.nonPeriodicRepairs - 1);
+      }
+      await car.save();
+    }
+  }
+
   await repair.deleteOne();
   console.log(`Repair document with ID ${id} successfully deleted.`);
 

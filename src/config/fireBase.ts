@@ -3,7 +3,7 @@ const admin = require("firebase-admin");
 if (!admin.apps.length) {
   try {
     // Try to use JSON file first (local development)
-    const serviceAccount = require("./serviceAccountKey.json");
+    const serviceAccount = require("D:/node_js/fixer/after apply permission for workers/config/serviceAccountKey.json");
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
