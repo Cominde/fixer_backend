@@ -21,6 +21,32 @@ const {
   sanitizePersonName,
 } = require("../utils/invoiceAttribution");
 
+/**
+ * Money contract for repair components:
+ * `component.price` is always a LINE TOTAL (inventory unit price × quantity).
+ * Services/additions `price` are line amounts as sent by the client.
+ */
+const toMoney = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const sumRepairLineTotals = (repair) => {
+  let total = 0;
+  for (const line of repair.Services || []) total += toMoney(line.price);
+  for (const line of repair.additions || []) total += toMoney(line.price);
+  for (const line of repair.component || []) total += toMoney(line.price);
+  return total;
+};
+
+const applyRepairTotals = (repair) => {
+  const totalPrice = sumRepairLineTotals(repair);
+  const discount = toMoney(repair.discount);
+  repair.totalPrice = totalPrice;
+  repair.priceAfterDiscount = totalPrice - discount;
+  return { totalPrice, priceAfterDiscount: repair.priceAfterDiscount };
+};
+
 async function resolveReceptionForRequest(req) {
   if (hasReceptionInput(req.body)) {
     return resolveReceptionEngineer(req.body);
@@ -158,7 +184,7 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
   const repairDetails = [];
 
   for (const { price, state } of services) {
-    totalPrice += price;
+    totalPrice += toMoney(price);
     totalServicesCount++;
     if (state === "completed") {
       completedServices++;
@@ -166,10 +192,11 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
   }
 
   for (const { price } of additions) {
-    totalPrice += price;
+    totalPrice += toMoney(price);
   }
 
   for (const { id, quantity } of components) {
+    const qty = toMoney(quantity);
     const inventoryComponent = await Inventory.findById(id);
 
     if (!inventoryComponent) {
@@ -178,14 +205,14 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
       );
     }
     if (
-      inventoryComponent.quantity < quantity ||
+      inventoryComponent.quantity < qty ||
       inventoryComponent.quantity < 0
     ) {
       return next(
         new apiError(`Not enough quantity for component with id ${id}`, 400),
       );
     }
-    inventoryComponent.quantity -= quantity;
+    inventoryComponent.quantity -= qty;
 
     await inventoryComponent.save({ validateBeforeSave: false });
 
@@ -201,12 +228,13 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
       }
     }
 
-    const componentPrice = inventoryComponent.price * quantity;
+    // component.price is always LINE TOTAL (unit × qty)
+    const componentPrice = toMoney(inventoryComponent.price) * qty;
     totalPrice += componentPrice;
 
     repairDetails.push({
       name: inventoryComponent.name,
-      quantity: quantity,
+      quantity: qty,
       price: componentPrice,
       _id : new ObjectId(id)
     });
@@ -251,7 +279,8 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
 
   const completedServicesRatio =
     totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
-  const priceAfterDiscount = totalPrice - discount;
+  const discountAmount = toMoney(discount);
+  const priceAfterDiscount = totalPrice - discountAmount;
 
   let state = "";
 
@@ -273,6 +302,15 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
   const receptionEngineer = await resolveReceptionForRequest(req);
   const representative = resolveRepresentative(req.body);
 
+  const normalizedServices = (services || []).map((s) => ({
+    ...s,
+    price: toMoney(s.price),
+  }));
+  const normalizedAdditions = (additions || []).map((a) => ({
+    ...a,
+    price: toMoney(a.price),
+  }));
+
   const repair = await Repairing.create({
     client: car.ownerName,
     genId: newId,
@@ -280,12 +318,12 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
     category: car.category,
     model: car.model,
     component: repairDetails,
-    Services: services,
-    additions,
+    Services: normalizedServices,
+    additions: normalizedAdditions,
     carNumber,
     type,
     totalPrice,
-    discount,
+    discount: discountAmount,
     priceAfterDiscount,
     expectedDate,
     complete,
@@ -447,7 +485,7 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
   const repairDetails = [];
 
   for (const { price, state } of services) {
-    totalPrice += price;
+    totalPrice += toMoney(price);
     totalServicesCount++;
     if (state === "completed") {
       completedServices++;
@@ -455,10 +493,11 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
   }
 
   for (const { price } of additions) {
-    totalPrice += price;
+    totalPrice += toMoney(price);
   }
 
   for (const { id, quantity } of components) {
+    const qty = toMoney(quantity);
     const inventoryComponent = await Inventory.findById(id);
 
     if (!inventoryComponent) {
@@ -467,14 +506,14 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
       );
     }
     if (
-      inventoryComponent.quantity < quantity ||
+      inventoryComponent.quantity < qty ||
       inventoryComponent.quantity < 0
     ) {
       return next(
         new apiError(`Not enough quantity for component with id ${id}`, 400),
       );
     }
-    inventoryComponent.quantity -= quantity;
+    inventoryComponent.quantity -= qty;
     await inventoryComponent.save({ validateBeforeSave: false });
 
     // Check if quantity is low and send notification to admin
@@ -489,25 +528,35 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
       }
     }
 
-    const componentPrice = inventoryComponent.price * quantity;
+    const componentPrice = toMoney(inventoryComponent.price) * qty;
     totalPrice += componentPrice;
 
     repairDetails.push({
       name: inventoryComponent.name,
-      quantity: quantity,
+      quantity: qty,
       price: componentPrice,
     });
   }
 
   const completedServicesRatio =
     totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
-  const priceAfterDiscount = totalPrice - discount;
+  const discountAmount = toMoney(discount);
+  const priceAfterDiscount = totalPrice - discountAmount;
 
   const expectedDate = new Date();
   expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
 
   const receptionEngineer = await resolveReceptionForRequest(req);
   const representative = resolveRepresentative(req.body);
+
+  const normalizedServices = (services || []).map((s) => ({
+    ...s,
+    price: toMoney(s.price),
+  }));
+  const normalizedAdditions = (additions || []).map((a) => ({
+    ...a,
+    price: toMoney(a.price),
+  }));
 
   // Create walk-in repair without car reference
   const repair = await Repairing.create({
@@ -517,19 +566,19 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
     category: category,
     model: model,
     component: repairDetails,
-    Services: services,
-    additions,
+    Services: normalizedServices,
+    additions: normalizedAdditions,
     carNumber: carNumber,
     type: type || "periodic",
     totalPrice,
-    discount,
+    discount: discountAmount,
     priceAfterDiscount,
     expectedDate,
     complete,
     completedServicesRatio,
     Note1,
     Note2,
-    distance: distance || 0,
+    distance: toMoney(distance),
     technicians: technicians || [],
     Reception: receptionEngineer,
     receptionEngineer,
@@ -1029,12 +1078,8 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
   if (!repair) {
     return next(new apiError(`No repair for this ID: ${req.params.id}`, 404));
   }
-  let priceAfterDiscount = repair.priceAfterDiscount || 0;
-  let totalPrice = repair.totalPrice || 0;
-  let updateTotalPrice = 0;
   let newComplete = false;
   let diffQuantity = 0;
-  let diffPrice = 0;
   if (req.body.genId) {
     if (!/^2021\d*$/.test(req.body.genId)) {
       return next(
@@ -1060,7 +1105,8 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
     repair.genId = req.body.genId;
   }
   if (req.body.components && req.body.components.length > 0) {
-    for (const { id: componentId, quantity,remove } of req.body.components) {
+    for (const { id: componentId, quantity, remove } of req.body.components) {
+      const qty = toMoney(quantity);
       //search in the repair components
       const repairComponent = repair.component.find(
         (comp) => comp._id.toString() === componentId,
@@ -1073,8 +1119,6 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
         if (remove) {
           if (inventory) {
             inventory.quantity += repairComponent.quantity;
-            diffPrice = inventory.price * repairComponent.quantity;
-            updateTotalPrice -= diffPrice;
             await inventory.save({ validateBeforeSave: false });
           } else {
             return next(
@@ -1088,47 +1132,29 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
           repair.component = repair.component.filter(
             (comp) => comp._id.toString() !== componentId,
           );
-        } else {
-          if (repairComponent.quantity < quantity) {
-            diffQuantity = quantity - repairComponent.quantity;
-
-            if (inventory) {
-              inventory.quantity -= diffQuantity;
-              diffPrice = inventory.price * diffQuantity;
-              updateTotalPrice += diffPrice;
-              repairComponent.price += diffPrice;
-            } else {
-              return next(
-                new apiError(
-                  `Component with name ${repairComponent.name} not found in inventory`,
-                  404,
-                ),
-              );
-            }
-            repairComponent.quantity = quantity;
-          } else if (repairComponent.quantity > quantity) {
-            diffQuantity = repairComponent.quantity - quantity;
-
-            if (inventory) {
-              inventory.quantity += diffQuantity;
-              diffPrice = inventory.price * diffQuantity;
-              updateTotalPrice -= diffPrice;
-              repairComponent.price -= diffPrice;
-            } else {
-              return next(
-                new apiError(
-                  `Component with name ${repairComponent.name} not found in inventory`,
-                  404,
-                ),
-              );
-            }
-            repairComponent.quantity = quantity;
-          } else {
-            repairComponent.quantity = quantity;
-          }
+          continue;
         }
+
+        if (!inventory) {
+          return next(
+            new apiError(
+              `Component with name ${repairComponent.name} not found in inventory`,
+              404,
+            ),
+          );
+        }
+
+        if (repairComponent.quantity < qty) {
+          diffQuantity = qty - repairComponent.quantity;
+          inventory.quantity -= diffQuantity;
+        } else if (repairComponent.quantity > qty) {
+          diffQuantity = repairComponent.quantity - qty;
+          inventory.quantity += diffQuantity;
+        }
+        repairComponent.quantity = qty;
+        // Always store LINE TOTAL from current inventory unit price
+        repairComponent.price = toMoney(inventory.price) * qty;
         await inventory.save({ validateBeforeSave: false });
-        await repairComponent.save();
       } else {
         const inventoryComponent = await Inventory.findById(componentId);
 
@@ -1140,30 +1166,28 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
             ),
           );
         }
-        if (inventoryComponent) {
-          if (quantity === 0) {
-            return next(
-              new apiError(
-                `in the add operation the quantity must be greater than zero`,
-                404,
-              ),
-            );
-          }
+        if (qty === 0) {
+          return next(
+            new apiError(
+              `in the add operation the quantity must be greater than zero`,
+              404,
+            ),
+          );
         }
 
         if (
-          inventoryComponent.quantity < quantity ||
+          inventoryComponent.quantity < qty ||
           inventoryComponent.quantity < 0
         ) {
           return next(
             new apiError(
-              `Not enough quantity for component with ID ${id}`,
+              `Not enough quantity for component with ID ${componentId}`,
               400,
             ),
           );
         }
 
-        inventoryComponent.quantity -= quantity;
+        inventoryComponent.quantity -= qty;
         await inventoryComponent.save({ validateBeforeSave: false });
 
         // Check if quantity is low and send notification to admin
@@ -1178,21 +1202,16 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
           }
         }
 
-        const componentPrice = inventoryComponent.price * quantity;
-        updateTotalPrice += componentPrice;
+        const componentPrice = toMoney(inventoryComponent.price) * qty;
 
         repair.component.push({
           name: inventoryComponent.name,
-          quantity: quantity,
+          quantity: qty,
           price: componentPrice,
           _id: new ObjectId(componentId)
         });
       }
     }
-    totalPrice = totalPrice + updateTotalPrice;
-    priceAfterDiscount = priceAfterDiscount + updateTotalPrice;
-    diffPrice = 0;
-    updateTotalPrice = 0;
   }
 
   if (req.body.services && req.body.services.length > 0) {
@@ -1214,7 +1233,6 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
         }
 
         if (remove) {
-          updateTotalPrice -= repairService.price;
           repair.Services = repair.Services.filter(
             (comp) => comp._id.toString() !== serviceId,
           );
@@ -1222,22 +1240,21 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
           if (name) {
             repairService.name = name;
           }
-          if (price !== undefined) {
-            if (repairService.price > price) {
-              diffPrice = repairService.price - price;
-              updateTotalPrice -= diffPrice;
-            } else if (repairService.price < price) {
-              diffPrice = price - repairService.price;
-              updateTotalPrice += diffPrice;
-            }
-            repairService.price = price;
+          // null/undefined = leave price unchanged (do not treat as 0)
+          if (price !== undefined && price !== null && price !== "") {
+            repairService.price = toMoney(price);
+          }
+          if (state) {
+            repairService.state = state;
           }
         }
-        // subdocument will be persisted when parent is saved
       } else {
-        // new service
-        if (price) updateTotalPrice += Number(price);
-        repair.Services.push({ name, price, state });
+        // new service — allow price 0
+        repair.Services.push({
+          name,
+          price: toMoney(price),
+          state,
+        });
       }
     }
 
@@ -1280,11 +1297,6 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
         new apiError(`No car for this number ${repair.carNumber}`, 404),
       );
     }
-
-    totalPrice = totalPrice + updateTotalPrice;
-    priceAfterDiscount = priceAfterDiscount + updateTotalPrice;
-    diffPrice = 0;
-    updateTotalPrice = 0;
   }
   if (req.body.additions && req.body.additions.length > 0) {
     // Process each incoming addition exactly once to avoid duplicates
@@ -1305,7 +1317,6 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
         }
 
         if (remove) {
-          updateTotalPrice -= repairAddition.price;
           repair.additions = repair.additions.filter(
             (comp) => comp._id.toString() !== additionId,
           );
@@ -1313,48 +1324,22 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
           if (name) {
             repairAddition.name = name;
           }
-          if (price !== undefined) {
-            if (repairAddition.price > price) {
-              diffPrice = repairAddition.price - price;
-              updateTotalPrice -= diffPrice;
-            } else if (repairAddition.price < price) {
-              diffPrice = price - repairAddition.price;
-              updateTotalPrice += diffPrice;
-            }
-            repairAddition.price = price;
+          if (price !== undefined && price !== null && price !== "") {
+            repairAddition.price = toMoney(price);
           }
         }
-        // subdocument will be persisted when parent is saved
       } else {
-        // new addition
-        if (price) updateTotalPrice += Number(price);
-        repair.additions.push({ name, price });
+        // new addition — allow price 0
+        repair.additions.push({ name, price: toMoney(price) });
       }
     }
-    totalPrice = totalPrice + updateTotalPrice;
-    priceAfterDiscount = priceAfterDiscount + updateTotalPrice;
-    updateTotalPrice = 0;
-    diffPrice = 0;
   }
 
-  if (req.body.discount !== undefined) {
-    let discount = 0;
-    const discountValue = Number(req.body.discount) || 0;
-
-    if (discountValue > repair.discount) {
-      discount = discountValue - repair.discount;
-      priceAfterDiscount -= discount;
-    } else if (discountValue < repair.discount) {
-      discount = repair.discount - discountValue;
-      priceAfterDiscount += discount;
-    } else if (discountValue === 0) {
-      // test this in 25/8/2026
-      priceAfterDiscount = priceAfterDiscount;
-    }
-    repair.discount = discountValue;
+  if (req.body.discount !== undefined && req.body.discount !== null) {
+    repair.discount = toMoney(req.body.discount);
   }
 
-  if (req.body.type) {
+  if (req.body.type && req.body.type !== repair.type) {
     let periodicRepairs = 0;
     let nonperiodicRepairs = 0;
     const reCar = await Car.findById(repair.carId);
@@ -1475,10 +1460,14 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
     );
     repair.expectedDate = expectedDate;
   }
-  if (req.body.Note1 || req.body.Note2 || req.body.distance) {
+  if (req.body.Note1 !== undefined) {
     repair.Note1 = req.body.Note1;
+  }
+  if (req.body.Note2 !== undefined) {
     repair.Note2 = req.body.Note2;
-    repair.distance = req.body.distance;
+  }
+  if (req.body.distance !== undefined && req.body.distance !== "") {
+    repair.distance = toMoney(req.body.distance);
   }
 
   // Invoice attribution — only overwrite when the client sends the keys.
@@ -1491,37 +1480,8 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
     repair.representative = resolveRepresentative(req.body);
   }
 
-  repair.totalPrice = totalPrice;
-  repair.priceAfterDiscount = priceAfterDiscount;
-  if (req.body.technicians && req.body.technicians.length > 0) {
-    for (const { workerId, name, remove } of req.body.technicians) {
-      if (!workerId) {
-        return next(new apiError("must send the worker id ", 400));
-      }
-      const existRepairWorkers = repair.technicians.find(
-        (comp) => comp.workerId.toString() === workerId,
-      );
-      if (existRepairWorkers) {
-        if (remove) {
-          repair.technicians = repair.technicians.filter(
-            (comp) => comp.workerId.toString() !== workerId,
-          );
-          const worker = await Worker.findById(workerId);
-          if (worker) {
-            worker.numberOfRepairs = Math.max(0, worker.numberOfRepairs - 1);
-            await worker.save();
-          }
-        }
-      } else {
-        const worker = await Worker.findById(workerId);
-        if (worker) {
-          worker.numberOfRepairs += 1;
-          await worker.save();
-        }
-        repair.technicians.push({ workerId, name });
-      }
-    }
-  }
+  // Always rebuild money from current lines (no incremental drift)
+  applyRepairTotals(repair);
 
   await repair.save();
 

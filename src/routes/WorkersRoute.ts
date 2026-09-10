@@ -522,7 +522,7 @@ router.route("/:id/password").post(setWorkerPassword);
  *         schema:
  *           type: string
  *           format: date
- *         description: Start date (ISO format: YYYY-MM-DD)
+ *         description: "Start date (ISO format: YYYY-MM-DD)"
  *         example: "2024-01-01"
  *       - in: query
  *         name: endDate
@@ -530,7 +530,7 @@ router.route("/:id/password").post(setWorkerPassword);
  *         schema:
  *           type: string
  *           format: date
- *         description: End date (ISO format: YYYY-MM-DD)
+ *         description: "End date (ISO format: YYYY-MM-DD)"
  *         example: "2024-01-31"
  *     responses:
  *       200:
