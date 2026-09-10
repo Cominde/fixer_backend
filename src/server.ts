@@ -1,3 +1,17 @@
+// Node 24+ removed buffer.SlowBuffer. jsonwebtoken → jwa → buffer-equal-constant-time
+// still reads it at import time. Polyfill before any auth-related require.
+{
+  const buffer = require("buffer");
+  if (!buffer.SlowBuffer) {
+    buffer.SlowBuffer = function SlowBuffer(size) {
+      return Buffer.allocUnsafeSlow
+        ? Buffer.allocUnsafeSlow(size)
+        : Buffer.allocUnsafe(size);
+    };
+    buffer.SlowBuffer.prototype = Object.create(Buffer.prototype);
+  }
+}
+
 const cors = require("cors");
 const express = require("express");
 const dotenv = require("dotenv");
