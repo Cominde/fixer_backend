@@ -235,7 +235,7 @@
     "start:dev": "nodemon --ext ts,json --watch src --ignore dist --exec \"npm run build && node --enable-source-maps dist/server.js\"",
     "start:prod": "NODE_ENV=production node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node dist/utils/invoiceAttribution.test.js",
+    "test": "npm run build && node dist/utils/invoiceAttribution.test.js",
     "backup": "node dist/scripts/backupDatabase.js",
     "restore": "node dist/scripts/restoreDatabase.js",
     "backup:scheduler": "node dist/scripts/backupScheduler.js"
