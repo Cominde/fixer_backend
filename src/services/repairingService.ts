@@ -63,20 +63,25 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
     technicians,
   } = req.body;
 
-  // For non-periodic repairs, get distance from last periodic repair if not provided
-  let finalDistance = distance;
-  if (
-    type === "nonPeriodic" &&
-    (distance === undefined || distance === null || distance === 0)
-  ) {
+  // For non-periodic repairs or when nextRepairDate/nextRepairDistance are empty, get values from last periodic repair
+  let finalDistance = req.body.distance;
+  let nextDistance = req.body.nextRepairDistance;
+  let nextRDate = req.body.nextRepairDate;
+  if (type === "nonPeriodic" || nextRepairDate === "" || nextRepairDistance === "") {
     const lastPeriodicRepair = await Repairing.findOne({
       carNumber: carNumber,
       type: "periodic",
     }).sort({ createdAt: -1 });
 
-    if (lastPeriodicRepair && lastPeriodicRepair.distance) {
-      finalDistance = lastPeriodicRepair.distance;
+    if (lastPeriodicRepair) {
+      // Use nextRepairDistance and nextRepairDate from the last periodic repair
+      nextDistance = lastPeriodicRepair.nextRepairDistance || 0;
+      nextRDate = lastPeriodicRepair.nextRepairDate;
+      finalDistance = lastPeriodicRepair.distance || 0;
     } else {
+      // No periodic repair found, set to default values
+      nextDistance = 0;
+      nextRDate = undefined;
       finalDistance = 0;
     }
   }
@@ -232,26 +237,16 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
   reCar.periodicRepairs = periodicRepairs;
   reCar.nonPeriodicRepairs = nonperiodicRepairs;
   reCar.distances = finalDistance;
+  reCar.nextRepairDistance = nextDistance;
+  reCar.nextRepairDate = nextRDate;
 
-  reCar.save();
   const currentDate = new Date();
-  const parsedNextPerDate = new Date(nextRepairDate);
+  const parsedNextPerDate = new Date(nextRDate);
   if (completedServices === totalServicesCount) {
     complete = true;
     const lastRepairDate = new Date();
-    const car = await Car.findOneAndUpdate(
-      { carNumber: carNumber },
-      {
-        lastRepairDate: lastRepairDate,
-        nextRepairDate: nextRepairDate,
-        repairing: !complete,
-      },
-      { new: true },
-    );
-
-    if (!car) {
-      return next(new apiError(`No car for this number ${carNumber}`, 404));
-    }
+    reCar.lastRepairDate = lastRepairDate;
+    reCar.repairing = !complete
   }
 
   const completedServicesRatio =
@@ -267,26 +262,10 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
   } else {
     state = "Need to check";
   }
-  const car_state = await Car.findOneAndUpdate(
-    { carNumber: carNumber },
-    { State: state },
-    { new: true },
-  );
+  reCar.State = state;
+  reCar.completedServicesRatio = completedServicesRatio
 
-  if (!car_state) {
-    return next(new apiError(`No car for this number ${carNumber}`, 404));
-  }
-  await car_state.save();
-  const car_ratio = await Car.findOneAndUpdate(
-    { carNumber: carNumber },
-    { completedServicesRatio: completedServicesRatio, nextRepairDistance },
-    { new: true },
-  );
-
-  if (!car_ratio) {
-    return next(new apiError(`No car for this number ${carNumber}`, 404));
-  }
-  await car_ratio.save();
+  reCar.save();
   const expectedDate = new Date();
   expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
 
@@ -314,8 +293,8 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
     Note1,
     Note2,
     distance: finalDistance,
-    nextRepairDistance,
-    nextRepairDate: nextRepairDate,
+    nextRepairDistance:nextDistance,
+    nextRepairDate: nextRDate,
     carId: car._id,
     generatedCode: car.generatedCode,
     technicians: technicians || [],
@@ -1413,11 +1392,19 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
   }
 
   if (req.body.nextRepairDate) {
-    if (!repair.complete) {
+    if (repair.complete) {
       await Car.findByIdAndUpdate(
         repair.carId,
         {
           lastRepairDate: new Date(),
+          nextRepairDate: req.body.nextRepairDate,
+        },
+        { new: true },
+      );
+    } else{
+      await Car.findByIdAndUpdate(
+        repair.carId,
+        {
           nextRepairDate: req.body.nextRepairDate,
         },
         { new: true },
@@ -1427,13 +1414,11 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
   }
 
   if (req.body.nextRepairDistance) {
-    if (!repair.complete) {
       await Car.findByIdAndUpdate(
         repair.carId,
         { nextRepairDistance: req.body.nextRepairDistance },
         { new: true },
       );
-    }
     repair.nextRepairDistance = req.body.nextRepairDistance;
   }
 
@@ -1611,7 +1596,9 @@ export const deleteRepair = asyncHandler(async (req, res, next) => {
   if (allCompleted && allRepairs.length > 0) {
     await Car.findOneAndUpdate(
       { carNumber },
-      { State: "Good", repairing: false , completedServicesRatio:1},
+      { State: "Good", repairing: false , completedServicesRatio:1 ,repairing_id:undefined,
+        lastRepairDate:undefined,
+      },
       { new: true }
     );
     console.log(`Car ${carNumber} status updated to Good with repairing=false`);

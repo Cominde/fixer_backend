@@ -7,14 +7,19 @@ const ApiError = require("../utils/apiError");
 const jwt = require("jsonwebtoken");
 
 /**
- * Check if a user/worker has a specific permission
- * This middleware handles both authentication and authorization
- * If the user is an admin (role = "admin"), allow access
- * If the user is a worker, check worker permissions
- * If the user is a regular user (not admin, not worker), allow access without permission check
- * If no token provided, allow access for regular users (app users)
- * @param {string} permissionKey - The permission key to check (e.g., 'workers.delete')
- * @returns {Function} Express middleware function
+ * Check if a user/worker has a specific permission.
+ * Handles both authentication and authorization for staff/admin-only routes.
+ *
+ * Customer-app routes are NOT wrapped in this middleware (Home, getById, etc.)
+ * and stay reachable without a token.
+ *
+ * - No / invalid token → 401 (admin routes require login)
+ * - Worker → role / overrides / full-access, else 403
+ * - Admin user (role = "admin") → allow
+ * - Regular user → 403 (customer token is not enough for staff routes)
+ *
+ * @param {string} permissionKey - e.g. 'workers.delete'
+ * @returns {Function} Express middleware
  */
 export const checkPermission = (permissionKey) => {
   return async (req, res, next) => {
@@ -28,9 +33,10 @@ export const checkPermission = (permissionKey) => {
         token = req.headers.authorization.split(" ")[1];
       }
 
-      // If no token provided, allow access (for regular app users)
       if (!token) {
-        return next();
+        return next(
+          new ApiError("You are not logged in. Please login to get access", 401),
+        );
       }
 
       // Verify token - if invalid, deny access
@@ -112,9 +118,10 @@ export const checkPermission = (permissionKey) => {
         return next();
       }
 
-      // Regular user (not admin, not worker) - allow access
-      req.user = user;
-      return next();
+      // Regular user (not admin, not worker) — staff routes only
+      return next(
+        new ApiError("You do not have permission to perform this action", 403),
+      );
     } catch (error) {
       return next(new ApiError(`Error checking permission: ${error.message}`, 500));
     }

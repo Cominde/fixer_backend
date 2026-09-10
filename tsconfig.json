@@ -5,7 +5,7 @@
     "module": "commonjs",
     "moduleResolution": "node",
 
-    "rootDir": ".",
+    "rootDir": "src",
     "outDir": "dist",
 
     "esModuleInterop": false,
@@ -24,6 +24,6 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["**/*.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "tools"]
 }

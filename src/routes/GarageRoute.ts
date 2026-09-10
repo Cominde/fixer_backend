@@ -151,23 +151,48 @@ router
  * @swagger
  * /Garage/search/{searchString}:
  *   get:
- *     summary: Search all cars by keyword
+ *     summary: Search all cars by keyword or by attributes (brand, category, model)
  *     tags: [Garage]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: searchString
- *         required: true
+ *         required: false
  *         schema:
  *           type: string
  *         example: "MITSUBISHI"
+ *       - in: query
+ *         name: brand
+ *         schema:
+ *           type: string
+ *         example: "MITSUBISHI"
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *         example: "LANCER PUMA"
+ *       - in: query
+ *         name: model
+ *         schema:
+ *           type: string
+ *         example: "2010"
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         example: 10
  *     responses:
  *       200:
  *         description: Matching cars
  */
 router
-  .route("/search/:searchString")
+  .route("/search/:searchString?")
   .get(checkPermission("cars.view"), searchForallCars);
 
 /**
@@ -275,10 +300,8 @@ router.route("/add/:id").post(checkPermission("cars.add"), addCar);
  * @swagger
  * /Garage/update/{id}:
  *   put:
- *     summary: Update car details and optionally its image
+ *     summary: Update car details only (without image)
  *     tags: [Garage]
- *     x-category: system
- *     x-status: "updated"
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -290,13 +313,10 @@ router.route("/add/:id").post(checkPermission("cars.add"), addCar);
  *         example: "6734de56e41091cfb6b02f7e"
  *     requestBody:
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
  *             properties:
- *               image:
- *                 type: string
- *                 format: binary
  *               carNumber:
  *                 type: string
  *                 example: "أ ن ق - 217"
@@ -315,8 +335,43 @@ router.route("/add/:id").post(checkPermission("cars.add"), addCar);
  *         description: Car not found
  */
 router
-  .route("/updateCar/:id")
+  .route("/update/:id")
+  .put(checkPermission("cars.edit"), updateCar);
 
+/**
+ * @swagger
+ * /Garage/updateCar/{id}:
+ *   put:
+ *     summary: Update car image only
+ *     tags: [Garage]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "6734de56e41091cfb6b02f7e"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [image]
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Car image updated successfully
+ *       404:
+ *         description: Car not found
+ */
+router
+  .route("/updateCar/:id")
   .put(
     checkPermission("cars.edit"),
     uploadSingleImage("image"),

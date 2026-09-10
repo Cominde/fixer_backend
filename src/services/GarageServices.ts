@@ -418,51 +418,58 @@ export const updateCar = [
 // @access  Private
 export const searchForallCars = asyncHandler(async (req, res, next) => {
   let { searchString } = req.params;
+  const { brand, category, model } = req.query;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
 
-  // First try to search by generatedCode (exact match)
-  const carByCode = await Car.findOne({ generatedCode: searchString });
-  
-  if (carByCode) {
-    // If found by generatedCode, return it
-    const documents = [carByCode];
-    const paginationResult = {
-      currentPage: page,
-      limit,
-      numberOfPages: 1,
-      totalDocuments: 1,
-      next: null,
-    };
-    return res
-      .status(200)
-      .json({ results: documents.length, paginationResult, data: documents });
+  // If searchString is provided, try existing search methods
+  if (searchString) {
+    // First try to search by generatedCode (exact match)
+    const carByCode = await Car.findOne({ generatedCode: searchString });
+    
+    if (carByCode) {
+      // If found by generatedCode, return it
+      const documents = [carByCode];
+      const paginationResult = {
+        currentPage: page,
+        limit,
+        numberOfPages: 1,
+        totalDocuments: 1,
+        next: null,
+      };
+      return res
+        .status(200)
+        .json({ results: documents.length, paginationResult, data: documents });
+    }
+
+    // Try to search by owner name (case-insensitive partial match)
+    const carsByOwner = await Car.find({
+      ownerName: { $regex: searchString, $options: 'i' }
+    });
+
+    if (carsByOwner.length > 0) {
+      const documents = carsByOwner;
+      const numberOfPages = Math.ceil(documents.length / limit);
+      const paginationResult = {
+        currentPage: page,
+        limit,
+        numberOfPages,
+        totalDocuments: documents.length,
+        next: page < numberOfPages ? page + 1 : null,
+      };
+      return res
+        .status(200)
+        .json({ results: documents.length, paginationResult, data: documents });
+    }
   }
 
-  // Try to search by owner name (case-insensitive partial match)
-  const carsByOwner = await Car.find({
-    ownerName: { $regex: searchString, $options: 'i' }
-  });
-
-  if (carsByOwner.length > 0) {
-    const documents = carsByOwner;
-    const numberOfPages = Math.ceil(documents.length / limit);
-    const paginationResult = {
-      currentPage: page,
-      limit,
-      numberOfPages,
-      totalDocuments: documents.length,
-      next: page < numberOfPages ? page + 1 : null,
-    };
-    return res
-      .status(200)
-      .json({ results: documents.length, paginationResult, data: documents });
-  }
-
-  // If not found by generatedCode or owner name, search by carNumber
+  // Search by carNumber and/or attributes (brand, category, model)
   const { documents, paginationResult } = await searchCarService({
     Model: Car,
-    searchString,
+    searchString: searchString || undefined,
+    brand,
+    category,
+    model,
     page,
     limit,
   });
@@ -473,7 +480,7 @@ export const searchForallCars = asyncHandler(async (req, res, next) => {
     : null;
 
   if (!documents.length)
-    return next(new apiError(`No car found for "${searchString}"`, 404));
+    return next(new apiError(`No car found`, 404));
 
   res
     .status(200)
@@ -486,11 +493,15 @@ export const searchForallCars = asyncHandler(async (req, res, next) => {
 // @access  Private
 export const searchForRepairingCars = asyncHandler(async (req, res, next) => {
   let { searchString } = req.params;
+  const { brand, category, model } = req.query;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const { documents, paginationResult } = await searchCarService({
     Model: Car,
     searchString,
+    brand,
+    category,
+    model,
     baseFilter: { State: "Repair" },
     page,
     limit,

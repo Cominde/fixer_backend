@@ -3,11 +3,9 @@ const path = require("path");
 /**
  * Filesystem anchors for code that has to find files at runtime.
  *
- * Sources live at `<repo>/**.ts` and compile to `<repo>/dist/**.js`, so
- * `__dirname` inside the running code is one directory deeper than it was when
- * the project ran the JavaScript files in place. Anything that resolves a path
- * from `__dirname` therefore has to be re-anchored, or it silently starts
- * looking inside `dist`.
+ * Sources live at `<repo>/src/**.ts` and compile to `<repo>/dist/**.js`.
+ * `__dirname` inside the running code is under `dist/`, so anything that
+ * resolves a path from `__dirname` has to be re-anchored.
  *
  * `APP_ROOT`     — root of the compiled JavaScript tree (`<repo>/dist`).
  *                  Use this to find other emitted modules, e.g. the route files

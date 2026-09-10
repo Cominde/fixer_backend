@@ -6,7 +6,7 @@ const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
 const moment = require("moment");
 const ApiFeatures = require("../utils/apiFeatures");
-const searchService = require("./searchService");
+const { searchService } = require("./searchService");
 const crypto = require("crypto");
 const cloudinary = require("../utils/cloudinary");
 

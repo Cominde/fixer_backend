@@ -88,6 +88,7 @@ export const createReport = asyncHandler(async (req, res, next) => {
         $gte: date,
         $lt: getUTCDate(year, month),
       },
+      complete:true
     });
 
     totalIncome = repairs.reduce(
@@ -352,6 +353,7 @@ export const getmonthWork = asyncHandler(async (req, res, next) => {
       $gte: startDate,
       $lt: endDate,
     },
+    complete:true
   }).select("client brand category model createdAt priceAfterDiscount");
 
   const workers = await Worker.find().select("name salary");
