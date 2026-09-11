@@ -88,7 +88,6 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
     nextRepairDistance,
     technicians,
   } = req.body;
-
   // For non-periodic repairs or when nextRepairDate/nextRepairDistance are empty, get values from last periodic repair
   let finalDistance = req.body.distance;
   let nextDistance = req.body.nextRepairDistance;
@@ -296,8 +295,8 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
 
   reCar.save();
   const expectedDate = new Date();
-  if(Number(daysItTake) > 0){
-    expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+  if(req.body.daysItTake && Number(req.body.daysItTake) > 0){
+    expectedDate.setDate(expectedDate.getDate() + parseInt(req.body.daysItTake));
   }
   const car = await Car.findOne({ carNumber });
   const receptionEngineer = await resolveReceptionForRequest(req);
@@ -1458,8 +1457,8 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
   }
   if (req.body.daysItTake) {
     const expectedDate = new Date();
-    if(Number(daysItTake) > 0){
-      expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+    if(Number(req.body.daysItTake) > 0){
+      expectedDate.setDate(expectedDate.getDate() + parseInt(req.body.daysItTake));
     }
     repair.expectedDate = expectedDate;
   }
