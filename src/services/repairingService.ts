@@ -296,8 +296,9 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
 
   reCar.save();
   const expectedDate = new Date();
-  expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
-
+  if(Number(daysItTake) > 0){
+    expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+  }
   const car = await Car.findOne({ carNumber });
   const receptionEngineer = await resolveReceptionForRequest(req);
   const representative = resolveRepresentative(req.body);
@@ -544,7 +545,9 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
   const priceAfterDiscount = totalPrice - discountAmount;
 
   const expectedDate = new Date();
-  expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+  if(Number(daysItTake) > 0){
+    expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+  }
 
   const receptionEngineer = await resolveReceptionForRequest(req);
   const representative = resolveRepresentative(req.body);
@@ -1455,9 +1458,9 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
   }
   if (req.body.daysItTake) {
     const expectedDate = new Date();
-    expectedDate.setDate(
-      expectedDate.getDate() + parseInt(req.body.daysItTake),
-    );
+    if(Number(daysItTake) > 0){
+      expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+    }
     repair.expectedDate = expectedDate;
   }
   if (req.body.Note1 !== undefined) {

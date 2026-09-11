@@ -94,6 +94,10 @@ const repairingSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
     completedServicesRatio: {
       type: Number,
     },
@@ -157,5 +161,22 @@ const repairingSchema = new mongoose.Schema(
   // مفيده ليا لو عايز اجيب ال منتج الاحدث بالوقت
   { timestamps: true },
 );
+
+// Pre-save hook to handle completedAt transitions
+repairingSchema.pre('save', function(next) {
+  if (this.isModified('complete')) {
+    if (this.complete === true) {
+      // Transitioning to complete: set completedAt if not already set
+      if (!this.completedAt) {
+        this.completedAt = new Date();
+      }
+    } else if (this.complete === false) {
+      // Reverting from complete: reset completedAt
+      this.completedAt = null;
+    }
+  }
+  next();
+});
+
 repairingSchema.plugin(cairoDatePlugin);
 export = mongoose.model("repairing", repairingSchema);

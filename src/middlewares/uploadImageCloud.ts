@@ -2,6 +2,7 @@ const cloudinary = require("../utils/cloudinary");
 const ApiError = require("../utils/apiError");
 const Car = require("../models/Car");
 const Worker = require("../models/Worker");
+const User = require("../models/userModel");
 const { removeBgExternal } = require("../utils/backgroundRemover");
 
 // @desc    save user image on cloudinary
@@ -11,6 +12,16 @@ exports.processUserImage = async (req, res, next) => {
   if (!req.file || !req.file.buffer) return next();
 
   try {
+    // Delete old image if user exists and has an existing image
+    if (req.user && req.user.imagePublicId) {
+      try {
+        await cloudinary.uploader.destroy(req.user.imagePublicId);
+        console.log(`🗑️ Old user image deleted: ${req.user.imagePublicId}`);
+      } catch (err) {
+        console.log(`ℹ️ No existing user image to delete or deletion failed: ${err.message}`);
+      }
+    }
+
     const bgRemovedBuffer = await removeBgExternal(req.file.buffer);
 
     const result: any = await new Promise((resolve, reject) => {
@@ -45,12 +56,26 @@ exports.processUserImage = async (req, res, next) => {
 exports.UpdateUserImage = async (req, res, next) => {
   if (!req.file || !req.file.buffer) return next();
   try {
+    // Delete old image if user exists and has an existing image
     if (req.user?.imagePublicId) {
-      await cloudinary.uploader.destroy(req.user.imagePublicId);
+      try {
+        await cloudinary.uploader.destroy(req.user.imagePublicId);
+        console.log(`🗑️ Old user image deleted: ${req.user.imagePublicId}`);
+      } catch (err) {
+        console.log(`ℹ️ No existing user image to delete or deletion failed: ${err.message}`);
+      }
     }
+
     const result: any = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
-        { folder: "Users" },
+        { 
+          folder: "Users",
+          resource_type: "image",
+          format: "png",
+          transformation: [
+            { width: 500, height: 500, crop: "fill", gravity: "auto" },
+          ],
+        },
         (err, uploadResult) => {
           if (err) return reject(err);
           resolve(uploadResult);
