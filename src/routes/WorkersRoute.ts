@@ -295,7 +295,29 @@ router.route("/search/:searchString").get(checkPermission("workers.view"), searc
  *         description: Worker not found
  */
 router.route("/withoutNID/:id").put(checkPermission("workers.edit"), UpdateWorkerDetals);
-
+/**
+ * @swagger
+ * /Worker/reset-salary:
+ *   post:
+ *     summary: Reset salary fields on first day of month (cron job)
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     description: Resets salaryAfterProcces and salaryAfterReword to base salary for workers whose loans/penalties/rewards are from previous months
+ *     responses:
+ *       200:
+ *         description: Salary fields reset successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 processedWorkers:
+ *                   type: number
+ */
+router.route("/reset-salary").post(checkPermission("workers.salary.edit"), resetSalaryFieldsOnFirstDay);
 /**
  * @swagger
  * /Worker/{IdNumber}:
@@ -330,29 +352,7 @@ router.route("/withoutNID/:id").put(checkPermission("workers.edit"), UpdateWorke
  */
 router.route("/:IdNumber").put(checkPermission("workers.edit"), UpdateWorkerDetalsByNID);
 
-/**
- * @swagger
- * /Worker/reset-salary:
- *   post:
- *     summary: Reset salary fields on first day of month (cron job)
- *     tags: [Workers]
- *     security:
- *       - bearerAuth: []
- *     description: Resets salaryAfterProcces and salaryAfterReword to base salary for workers whose loans/penalties/rewards are from previous months
- *     responses:
- *       200:
- *         description: Salary fields reset successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 processedWorkers:
- *                   type: number
- */
-router.route("/reset-salary").post(checkPermission("workers.salary.edit"), resetSalaryFieldsOnFirstDay);
+
 
 /**
  * @swagger
