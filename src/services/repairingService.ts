@@ -890,7 +890,7 @@ export const getAllComRepairs = asyncHandler(async (req, res, next) => {
 // @access private
 export const getCarRepairsByid = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-  const { type } = req.body;
+  const { type } = req.query;
   const car = await Car.findById(id);
 
   if (!car || car.length === 0) {
