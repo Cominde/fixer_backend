@@ -890,7 +890,8 @@ export const getAllComRepairs = asyncHandler(async (req, res, next) => {
 // @access private
 export const getCarRepairsByid = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-  const { type } = req.body;
+  // FE sends ?type= on GET; body is empty for GET. Accept query first, body fallback.
+  const type = req.query.type ?? req.body?.type;
   const car = await Car.findById(id);
 
   if (!car || car.length === 0) {
@@ -904,13 +905,12 @@ export const getCarRepairsByid = asyncHandler(async (req, res, next) => {
 
   let query: any = { carId: car._id };
 
-  // Filter by type if specified
+  // Filter by type if specified (periodic | nonPeriodic | all/omit = all)
   if (type === "periodic") {
     query.type = "periodic";
   } else if (type === "nonPeriodic") {
     query.type = "nonPeriodic";
   }
-  // If type is "all" or not specified, return all repairs (no filter)
 
   const repairing = await Repairing.find(query);
   if (!repairing || repairing.length === 0) {
