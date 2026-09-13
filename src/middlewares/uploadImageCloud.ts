@@ -304,7 +304,8 @@ exports.deleteUserImage = async (req, res, next) => {
   next();
 };
 
-// @desc    save worker image on cloudinary
+// @desc    Upload worker image to Cloudinary (do NOT destroy old asset here —
+//          setWorkerImage destroys previous id only after a successful DB save).
 // @route   Post /api/v1/Worker/:id/image
 // @access  private
 exports.processWorkerImage = async (req, res, next) => {
@@ -316,10 +317,8 @@ exports.processWorkerImage = async (req, res, next) => {
       return next(new ApiError("Worker not found", 404));
     }
 
-    // Delete existing image if it exists
-    if (worker.imagePublicId) {
-      await cloudinary.uploader.destroy(worker.imagePublicId);
-    }
+    // Preserve previous id for post-save cleanup (never destroy shared default here)
+    req.previousWorkerImagePublicId = worker.imagePublicId || null;
 
     const bgRemovedBuffer = await removeBgExternal(req.file.buffer);
 
