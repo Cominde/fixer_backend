@@ -15,6 +15,7 @@ const {
   resetSalaryFieldsOnFirstDay,
   deleteWorkerFinancialRecord,
   setWorkerImage,
+  clearWorkerImage,
   setWorkerPassword,
   getWorkerRepairCount,
 } = require("../services/WorksServices");
@@ -448,6 +449,31 @@ router.route("/:id/image").post(
   uploadSingleImage("image"),
   processWorkerImage,
   setWorkerImage
+);
+
+/**
+ * @swagger
+ * /Worker/{id}/image:
+ *   delete:
+ *     summary: Clear profile image for a worker
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Worker image cleared
+ *       404:
+ *         description: Worker not found
+ */
+router.route("/:id/image").delete(
+  checkPermission("workers.edit"),
+  clearWorkerImage
 );
 
 /**

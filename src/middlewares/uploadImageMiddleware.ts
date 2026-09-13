@@ -16,7 +16,7 @@ const multerOptions = () => {
     }
     
     // Fallback: check file extension if mimetype is missing or not recognized
-    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
     const fileExtension = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
     
     if (allowedExtensions.includes(fileExtension)) {
@@ -31,6 +31,10 @@ const multerOptions = () => {
   const upload = multer({
     storage: multerStorage,
     fileFilter: multerFilter,
+    limits: {
+      fileSize: 8 * 1024 * 1024, // 8MB
+      files: 1,
+    },
   });
 
   return upload;

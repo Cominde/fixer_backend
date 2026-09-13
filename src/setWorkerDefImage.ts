@@ -65,7 +65,7 @@ async function updateWorkerImages(imageUrl, publicId) {
     await mongoose.connect(process.env.DB_URL);
     console.log("✅ Connected to DB");
 
-    // 🔥 Update workers that don't have an image or have null/empty image
+    // Set display URL only — never attach shared publicId (destroy would wipe all)
     const result = await Worker.updateMany(
       { 
         $or: [
@@ -78,14 +78,14 @@ async function updateWorkerImages(imageUrl, publicId) {
         ]
       },
       { 
-        $set: { 
-          image: imageUrl, 
-          imagePublicId: publicId 
-        } 
+        $set: { image: imageUrl },
+        $unset: { imagePublicId: "" },
       }
     );
 
     console.log("🚀 Updated workers without images:", result.modifiedCount);
+    // publicId param kept for logging compatibility with callers
+    void publicId;
     
     // Optional: Also update all workers if you want to replace ALL images
     // Uncomment the following lines if you want to replace ALL worker images:

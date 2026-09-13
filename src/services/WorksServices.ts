@@ -2,13 +2,22 @@ const Worker = require("../models/Worker");
 //const slugify = require("slugify");
   const Repairing = require("../models/repairingModel");
 const asyncHandler = require("express-async-handler");
-const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
 const moment = require("moment");
 const ApiFeatures = require("../utils/apiFeatures");
 const { searchService } = require("./searchService");
 const crypto = require("crypto");
-const cloudinary = require("../utils/cloudinary");
+const {
+  safeDestroyWorkerImage,
+  isSharedWorkerDefaultPublicId,
+} = require("../utils/workerImage");
+
+/** Photo fields must only be written via POST/DELETE …/image */
+function stripWorkerImageFields(body: Record<string, unknown>) {
+  if (!body || typeof body !== "object") return;
+  delete body.image;
+  delete body.imagePublicId;
+}
 
 // Function to generate a random password
 const generateWorkerPassword = () => {
@@ -79,7 +88,7 @@ export const searchForWorker = asyncHandler(async (req, res, next) => {
   const { documents, paginationResult } = await searchService({
     Model: Worker,
     searchString,
-    select: "name IdNumber phoneNumber jobTitle",
+    select: "name IdNumber phoneNumber jobTitle image imagePublicId",
   });
   if (!documents || documents.length === 0) {
     return next(
@@ -121,6 +130,7 @@ export const getSpacificWorker = asyncHandler(async (req, res, next) => {
 // @Route Put /api/v1/Worker
 // @access private
 export const UpdateWorkerDetals = asyncHandler(async (req, res, next) => {
+  stripWorkerImageFields(req.body);
   if (req.body.salary) {
     if (!req.body.salaryAfterProcces) {
       req.body.salaryAfterProcces = req.body.salary;
@@ -148,10 +158,20 @@ export const UpdateWorkerDetals = asyncHandler(async (req, res, next) => {
   res.status(200).json({ data: documentResponse });
 });
 
-// @desc delte Worker
-// @Route DELTE /api/v1/Worker
+// @desc delete Worker (+ Cloudinary image cleanup)
+// @Route DELETE /api/v1/Worker
 // @access private
-export const deleteWorker = factory.deleteOne(Worker);
+export const deleteWorker = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const worker = await Worker.findById(id);
+  if (!worker) {
+    return next(new apiError(`No document for this id ${id}`, 404));
+  }
+  const publicId = worker.imagePublicId;
+  await Worker.findByIdAndDelete(id);
+  await safeDestroyWorkerImage(publicId);
+  res.status(204).send();
+});
 
 // @desc Get list of Worker with salary
 // @Route GET /api/v1/Worker/salary
@@ -195,8 +215,8 @@ export const getWorkerWithSalaryById = asyncHandler(async (req, res, next) => {
 // @access private
 export const UpdateWorkerDetalsByNID = asyncHandler(async (req, res, next) => {
   const { IdNumber } = req.params;
+  stripWorkerImageFields(req.body);
 
-  // Assuming carNumber is a unique identifier in your Car model
   const worker = await Worker.findOneAndUpdate({ IdNumber }, req.body, {
     new: true,
   });
@@ -434,6 +454,8 @@ export const deleteWorkerFinancialRecord = asyncHandler(async (req, res, next) =
 export const setWorkerImage = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const { image, imagePublicId } = req.body;
+  const previousPublicId =
+    (req as any).previousWorkerImagePublicId ?? null;
 
   if (!image || !imagePublicId) {
     return next(new apiError("Image data is required", 400));
@@ -441,24 +463,57 @@ export const setWorkerImage = asyncHandler(async (req, res, next) => {
 
   const worker = await Worker.findById(id);
   if (!worker) {
+    // Upload already happened — clean orphan
+    await safeDestroyWorkerImage(imagePublicId);
     return next(new apiError("Worker not found", 404));
   }
 
-  // Delete old image from Cloudinary if exists
-  if (worker.imagePublicId) {
-    try {
-      await cloudinary.uploader.destroy(worker.imagePublicId);
-    } catch (err) {
-      console.log("Error deleting old image:", err);
-    }
+  const oldPublicId = previousPublicId || worker.imagePublicId;
+
+  try {
+    worker.image = image;
+    worker.imagePublicId = imagePublicId;
+    await worker.save();
+  } catch (err) {
+    await safeDestroyWorkerImage(imagePublicId);
+    throw err;
   }
 
-  worker.image = image;
-  worker.imagePublicId = imagePublicId;
-  await worker.save();
+  // Destroy previous unique asset only after successful save
+  if (
+    oldPublicId &&
+    oldPublicId !== imagePublicId &&
+    !isSharedWorkerDefaultPublicId(oldPublicId)
+  ) {
+    await safeDestroyWorkerImage(oldPublicId);
+  }
 
-  // Remove salary fields from response
   const workerResponse = worker.toObject();
+  delete workerResponse.salary;
+  delete workerResponse.salaryAfterProcces;
+  delete workerResponse.salaryAfterReword;
+
+  res.status(200).json({ data: workerResponse });
+});
+
+// @desc Clear worker profile image
+// @Route DELETE /api/v1/Worker/:id/image
+// @access private
+export const clearWorkerImage = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const worker = await Worker.findById(id);
+  if (!worker) {
+    return next(new apiError("Worker not found", 404));
+  }
+
+  const publicId = worker.imagePublicId;
+  await Worker.findByIdAndUpdate(id, {
+    $unset: { image: "", imagePublicId: "" },
+  });
+  await safeDestroyWorkerImage(publicId);
+
+  const refreshed = await Worker.findById(id);
+  const workerResponse = refreshed!.toObject();
   delete workerResponse.salary;
   delete workerResponse.salaryAfterProcces;
   delete workerResponse.salaryAfterReword;

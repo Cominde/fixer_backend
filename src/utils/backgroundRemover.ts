@@ -50,14 +50,14 @@ async function removeBgExternal(buffer) {
       }
     }
     
-    // For any other error (network error, 5xx, timeout, etc.), do NOT fall back
-    // Return a clear error message
-    const errorMessage = error.response 
+    // Any other remove.bg failure: keep upload working with the original image
+    const errorMessage = error.response
       ? `remove.bg API error: ${error.response.status} - ${error.response.statusText}`
       : error.message || "Unknown error occurred with remove.bg API";
-    
+
     console.error(`❌ ${errorMessage}`);
-    throw new Error(errorMessage);
+    console.warn("⚠️ Returning original image without background removal");
+    return buffer;
   }
 }
 
