@@ -21,6 +21,8 @@ export = {
         endpoints: [
           { method: 'PUT', path: '/api/V1/Worker/withoutNID/:id', params: ['id'] },
           { method: 'PUT', path: '/api/V1/Worker/:IdNumber', params: ['IdNumber'] },
+          { method: 'POST', path: '/api/V1/Worker/:id/image', params: ['id'] },
+          { method: 'DELETE', path: '/api/V1/Worker/:id/image', params: ['id'] },
         ]
       },
       'workers.delete': { 

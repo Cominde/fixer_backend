@@ -264,7 +264,7 @@ router.route("/nextCode/suggestNextCodeNumber").get(suggestNextCodeNumber);
  * @swagger
  * /repairing/getById/{id}:
  *   get:
- *     summary: Get a specific repair record by ID
+ *     summary: Get repair records for a car by car ID (optional type filter)
  *     tags: [Repairing]
  *     security:
  *       - bearerAuth: []
@@ -275,6 +275,13 @@ router.route("/nextCode/suggestNextCodeNumber").get(suggestNextCodeNumber);
  *         schema:
  *           type: string
  *         example: "6734de56e41091cfb6b02f7e"
+ *       - in: query
+ *         name: type
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [periodic, nonPeriodic, all]
+ *         description: Filter repairs by type. Omit or "all" returns every repair for the car.
  *     responses:
  *       200:
  *         description: Repair record details
