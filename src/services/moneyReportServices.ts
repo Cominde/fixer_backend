@@ -504,7 +504,7 @@ export const getOrganizationReport = asyncHandler(async (req, res, next) => {
   toDate.setHours(23, 59, 59, 999);
 
   // Get all workers (technicians)
-  const workers = await Worker.find({}).select("name jobTitle");
+  const workers = await Worker.find({}).select("name jobTitle salaryAfterProcces");
 
   // Count repairs per worker within the date range using technicians array
   const workersWithRepairCount = await Promise.all(
@@ -546,7 +546,7 @@ export const getOrganizationReport = asyncHandler(async (req, res, next) => {
 
   // Get workers' salaries for the period
   const totalSalaries = workers.reduce((sum, worker) => {
-    return sum + (worker.salary || 0);
+    return sum + (worker.salaryAfterProcces || 0);
   }, 0);
 
   // Get monthly report for the period (if exists)
