@@ -12,6 +12,7 @@ const {
   moveGeneratedCode,
   deleteCategoryCode
 } = require("../services/categoryCodeService");
+const { checkPermission } = require("../middlewares/checkPermission");
 
 /**
  * @swagger
@@ -91,7 +92,7 @@ const {
  *       400:
  *         description: Validation error
  */
-router.route("/").post(createCategoryCode).get(getallCategoryCode);
+router.route("/").post(checkPermission("categoryCodes.add"), createCategoryCode).get(checkPermission("categoryCodes.view"), getallCategoryCode);
 
 /**
  * @swagger
@@ -119,7 +120,7 @@ router.route("/").post(createCategoryCode).get(getallCategoryCode);
  *                       category:
  *                         type: string
  */
-router.route("/category/fordrop/").get(getallCategoryOnly);
+router.route("/category/fordrop/").get(checkPermission("categoryCodes.view"), getallCategoryOnly);
 /**
  * @swagger
  * /Category/moveCode:
@@ -178,7 +179,7 @@ router.route("/category/fordrop/").get(getallCategoryOnly);
  *       404:
  *         description: Car or category not found
  */
-router.route("/moveCode").put(moveGeneratedCode);
+router.route("/moveCode").put(checkPermission("categoryCodes.edit"), moveGeneratedCode);
 
 /**
  * @swagger
@@ -274,7 +275,7 @@ router.route("/moveCode").put(moveGeneratedCode);
  *       404:
  *         description: Category code not found
  */
-router.route("/:id").get(getCategoryCode).put(updateCategory).delete(deleteCategoryCode);
+router.route("/:id").get(checkPermission("categoryCodes.view"), getCategoryCode).put(checkPermission("categoryCodes.edit"), updateCategory).delete(checkPermission("categoryCodes.delete"), deleteCategoryCode);
 
 /**
  * @swagger
@@ -295,7 +296,7 @@ router.route("/:id").get(getCategoryCode).put(updateCategory).delete(deleteCateg
  *       200:
  *         description: Matching category codes
  */
-router.route("/search/:searchString").get(searchInCategory);
+router.route("/search/:searchString").get(checkPermission("categoryCodes.view"), searchInCategory);
 /**
  * @swagger
  * /Category/nextCode/{Code}:
@@ -338,7 +339,7 @@ router.route("/search/:searchString").get(searchInCategory);
  *       400:
  *         description: No category found with this code
  */
-router.route("/nextCode/:code").get(suggestNextCodeNumber);
+router.route("/nextCode/:code").get(checkPermission("categoryCodes.view"), suggestNextCodeNumber);
 
 
 

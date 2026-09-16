@@ -17,6 +17,7 @@ const {
   sendNeedsCheckNotification,
 } = require("./notificationFire");
 const createToken = require("../utils/createToken");
+const { resolveUserIdFromDecoded } = require("../utils/jwtPayload");
 
 const User = require("../models/userModel");
 const Worker = require("../models/Worker");
@@ -166,10 +167,7 @@ export const protect = asyncHandler(async (req, res, next) => {
   const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
 
   //check if user exists
-  const userId =
-    decoded.userId && decoded.userId.userId
-      ? decoded.userId.userId
-      : decoded.userId;
+  const userId = resolveUserIdFromDecoded(decoded);
   const currentUser = await User.findById(userId);
   if (!currentUser) {
     return next(

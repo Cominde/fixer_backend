@@ -1,24 +1,28 @@
-const jwt = require("jsonwebtoken");
+const {
+  getBearerToken,
+  verifyAndResolveUserId,
+} = require("../utils/jwtPayload");
 
-// Middleware to verify JWT token
+/**
+ * Lightweight JWT gate for passkey register/list/revoke.
+ * Sets req.user = { _id } using the same id resolution as protect / checkPermission.
+ * Controllers may still re-read the token; this must never invent a nested .userId.userId miss.
+ */
 export const verifyToken = (req, res, next) => {
-  const authHeader = req.headers["authorization"];
+  const token = getBearerToken(req);
 
-  if (!authHeader) {
+  if (!token) {
     return res
       .status(401)
       .json({ message: "Access denied. No token provided." });
   }
 
-  // Extract token - handle both "Bearer token" and raw token
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : authHeader;
-
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    console.log(decoded.userId.userId);
-    req.user = { _id: decoded.userId.userId }; // Set req.user with _id
+    const { userId } = verifyAndResolveUserId(token);
+    if (!userId) {
+      return res.status(401).json({ message: "Invalid token." });
+    }
+    req.user = { _id: userId };
     next();
   } catch (error) {
     if (error.name === "TokenExpiredError") {

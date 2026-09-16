@@ -525,7 +525,7 @@ router.route("/:id/image").delete(
  *       404:
  *         description: Worker not found
  */
-router.route("/:id/password").post(setWorkerPassword);
+router.route("/:id/password").post(checkPermission("workers.edit"), setWorkerPassword);
 
 /**
  * @swagger

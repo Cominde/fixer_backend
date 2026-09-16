@@ -1,10 +1,15 @@
 const mongoose = require('mongoose');
+const path = require('path');
 const Workers = require('../models/Worker');
-require('dotenv').config({ path: '../config.env' });
+require('dotenv').config({ path: path.join(__dirname, '../../config.env') });
 
+const dbUrl = process.env.DB_URL;
+if (!dbUrl) {
+  console.error('DB_URL is missing from config.env');
+  process.exit(1);
+}
 
-
-mongoose.connect("mongodb+srv://Fixer_center:FF_120594@cluster0.bimweny.mongodb.net/Fixer_DB?retryWrites=true&w=majority&authSource=admin").then(() => {
+mongoose.connect(dbUrl).then(() => {
   console.log('DB connection successful');
 });
 const generateUniqueCode = async () => {

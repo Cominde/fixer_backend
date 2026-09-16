@@ -68,6 +68,12 @@ export const getSpacificRequest = asyncHandler(async (req, res, next) => {
     return next(new apiError(`there is no request with this id ${id}`, 404));
   }
 
+  const userId = req.user._id.toString();
+  const isAdmin = req.user.role === "admin";
+  if (!isAdmin && request.user.toString() !== userId) {
+    return next(new apiError(`you are not allowed to view this request`, 403));
+  }
+
   res.status(200).json({ success: true, data: request });
 });
 

@@ -18,6 +18,8 @@ const dotenv = require("dotenv");
 const morgan = require("morgan");
 const cron = require("node-cron");
 const axios = require("axios");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 dotenv.config({ path: "config.env" });
 const apiError = require("./utils/apiError");
@@ -55,33 +57,107 @@ dbconnection();
 // express app
 const app = express();
 
+app.set("trust proxy", 1);
+app.use(
+  helmet({
+    // API serves JSON + swagger; relax CSP for /api-docs assets.
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
+
+const defaultCorsOrigins = [
+  "https://fixer.cominde.org",
+  "https://app.fixer.cominde.org",
+  "https://fixer-admin.cominde.org",
+  "https://fixer-app.vercel.app",
+  "https://fixer-app-iota.vercel.app",
+  "https://fixer-system.vercel.app",
+  "https://fixer-landing-lovat.vercel.app",
+  "http://localhost:3000",
+  "http://localhost:8080",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:8080",
+];
+
+const envCorsOrigins = [
+  ...(process.env.CORS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+  ...(process.env.WEBAUTHN_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+];
+
+const allowedOrigins = new Set([...defaultCorsOrigins, ...envCorsOrigins]);
+const isDev = process.env.NODE_ENV === "development";
+
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+      // Non-browser clients (mobile apps, curl) send no Origin.
+      if (!origin) return callback(null, true);
+      if (isDev) return callback(null, true);
+      if (allowedOrigins.has(origin)) return callback(null, true);
+      return callback(null, false);
+    },
     credentials: true,
   }),
 );
 app.options("*", cors());
+
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many auth attempts, please try again later." },
+});
+
+app.use(globalLimiter);
 // middlewaers
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 // eslint-disable-next-line eqeqeq
 if (process.env.NODE_ENV == "development") {
   app.use(morgan("dev"));
   console.log(` mode ${process.env.NODE_ENV}`);
 }
-app.use(
-  "/api-docs",
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec, {
-    customSiteTitle: "Fixer API Docs",
-    customCss: ".swagger-ui .topbar { display: none }",
-  }),
-);
+
+// Swagger only when explicitly enabled (or local development).
+const enableApiDocs =
+  process.env.ENABLE_API_DOCS === "true" ||
+  process.env.NODE_ENV === "development";
+if (enableApiDocs) {
+  app.use(
+    "/api-docs",
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec, {
+      customSiteTitle: "Fixer API Docs",
+      customCss: ".swagger-ui .topbar { display: none }",
+    }),
+  );
+} else {
+  app.get("/api-docs", (_req, res) => {
+    res.status(404).json({ message: "API docs are disabled" });
+  });
+  app.get("/api-docs/*", (_req, res) => {
+    res.status(404).json({ message: "API docs are disabled" });
+  });
+}
 // Routes
 app.use("/api/V1/Inventort", InvRoute);
 app.use("/api/V1/Garage", GarageRoute);
 app.use("/api/V1/User", userRoute);
-app.use("/api/V1/auth", authRoute);
+app.use("/api/V1/auth", authLimiter, authRoute);
 app.use("/api/V1/repairing", repairingRoute);
 app.use("/api/V1/Home", homeRoute);
 app.use("/api/V1/Worker", workerRoute);
