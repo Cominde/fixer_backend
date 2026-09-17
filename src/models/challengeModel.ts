@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 const { cairoDatePlugin } = require("../utils/cairoDate");
-const { CHALLENGE_TYPES } = require("./challengeTypes");
+
+// Keep the original ["register","login"] plus legacy worker-* labels so older
+// documents still validate. New writes must use register/login only (see
+// normalizeChallengeType in webauthnService).
 const challengeSchema = new mongoose.Schema(
   {
     challenge: {
@@ -12,8 +15,7 @@ const challengeSchema = new mongoose.Schema(
     type: {
       type: String,
       required: true,
-      // Keep worker-* for any leftover docs; new worker flows write register/login.
-      enum: CHALLENGE_TYPES,
+      enum: ["register", "login", "worker-register", "worker-login"],
       index: true,
     },
     userId: {
@@ -48,4 +50,5 @@ challengeSchema.index({ type: 1, expiresAt: 1, usedAt: 1 });
 challengeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 challengeSchema.plugin(cairoDatePlugin);
-export = mongoose.model("Challenge", challengeSchema);
+export = mongoose.models.Challenge ||
+  mongoose.model("Challenge", challengeSchema);

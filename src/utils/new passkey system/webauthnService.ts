@@ -4,15 +4,20 @@ const cbor = require("cbor");
 const base64url = require("base64url");
 const Passkey = require("../models/passkeyModel");
 const Challenge = require("../models/challengeModel");
-const {
-  REGISTER,
-  LOGIN,
-  WORKER_REGISTER_TYPES,
-  WORKER_LOGIN_TYPES,
-} = require("../models/challengeTypes");
 const User = require("../models/userModel");
 const Worker = require("../models/Worker");
 const ApiError = require("../utils/apiError");
+
+const CHALLENGE_REGISTER = "register";
+const CHALLENGE_LOGIN = "login";
+const REGISTER_CHALLENGE_TYPES = ["register", "worker-register"];
+const LOGIN_CHALLENGE_TYPES = ["login", "worker-login"];
+
+const normalizeChallengeType = (type) => {
+  if (type === "worker-register") return CHALLENGE_REGISTER;
+  if (type === "worker-login") return CHALLENGE_LOGIN;
+  return type;
+};
 const createToken = require("../utils/createToken");
 const mongoose = require("mongoose");
 const admin = require("../config/fireBase.js");
@@ -176,7 +181,7 @@ const createChallenge = async (
 
   await Challenge.create({
     challenge,
-    type,
+    type: normalizeChallengeType(type),
     userId,
     email,
     expiresAt,
@@ -686,7 +691,7 @@ export const beginWorkerPasskeyRegistration = async (workerId, origin) => {
   }
 
   console.log("[WORKER PASSKEY REGISTRATION] Worker found:", worker.name);
-  const challenge = await createChallenge(REGISTER, workerId);
+  const challenge = await createChallenge(CHALLENGE_REGISTER, workerId);
   console.log(
     "[WORKER PASSKEY REGISTRATION] Generated challenge (base64):",
     challenge,
@@ -769,7 +774,7 @@ export const finishWorkerPasskeyRegistration = async (
 
   const challengeDoc = await validateChallenge(
     challenge,
-    WORKER_REGISTER_TYPES,
+    REGISTER_CHALLENGE_TYPES,
     workerId,
   );
   console.log("[WORKER PASSKEY FINISH REGISTRATION] Challenge validated");
@@ -862,7 +867,7 @@ export const beginWorkerPasskeyLogin = async (phoneNumber, origin) => {
 
   const worker = await Worker.findOne({ phoneNumber: phoneNumber.trim() });
   if (!worker) {
-    const challenge = await createChallenge(LOGIN, null, phoneNumber);
+    const challenge = await createChallenge(CHALLENGE_LOGIN, null, phoneNumber);
     const rpId = getRpId(origin);
     return { allowCredentials: [], challenge, rpId };
   }
@@ -879,7 +884,7 @@ export const beginWorkerPasskeyLogin = async (phoneNumber, origin) => {
     transports: passkey.transports,
   }));
 
-  const challenge = await createChallenge(LOGIN, worker._id, phoneNumber);
+  const challenge = await createChallenge(CHALLENGE_LOGIN, worker._id, phoneNumber);
   console.log("Generated worker login challenge (base64):", challenge);
 
   const rpId = getRpId(origin);
@@ -913,7 +918,7 @@ export const finishWorkerPasskeyLogin = async (credential, origin, clientDataJSO
 
   const challengeDoc = await Challenge.findOne({
     challenge,
-    type: { $in: WORKER_LOGIN_TYPES },
+    type: { $in: LOGIN_CHALLENGE_TYPES },
     usedAt: { $exists: false },
     expiresAt: { $gt: new Date() },
   });
