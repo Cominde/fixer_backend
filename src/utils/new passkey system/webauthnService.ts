@@ -4,6 +4,12 @@ const cbor = require("cbor");
 const base64url = require("base64url");
 const Passkey = require("../models/passkeyModel");
 const Challenge = require("../models/challengeModel");
+const {
+  REGISTER,
+  LOGIN,
+  WORKER_REGISTER_TYPES,
+  WORKER_LOGIN_TYPES,
+} = require("../models/challengeTypes");
 const User = require("../models/userModel");
 const Worker = require("../models/Worker");
 const ApiError = require("../utils/apiError");
@@ -188,9 +194,10 @@ const validateChallenge = async (
   userId = null,
   email = null,
 ) => {
+  const types = Array.isArray(type) ? type : [type];
   const challengeDoc = await Challenge.findOne({
     challenge,
-    type,
+    type: { $in: types },
     $or: [{ userId: userId }, { email: email }],
   });
 
@@ -679,7 +686,7 @@ export const beginWorkerPasskeyRegistration = async (workerId, origin) => {
   }
 
   console.log("[WORKER PASSKEY REGISTRATION] Worker found:", worker.name);
-  const challenge = await createChallenge("worker-register", workerId);
+  const challenge = await createChallenge(REGISTER, workerId);
   console.log(
     "[WORKER PASSKEY REGISTRATION] Generated challenge (base64):",
     challenge,
@@ -760,7 +767,11 @@ export const finishWorkerPasskeyRegistration = async (
     clientData.origin,
   );
 
-  const challengeDoc = await validateChallenge(challenge, "worker-register", workerId);
+  const challengeDoc = await validateChallenge(
+    challenge,
+    WORKER_REGISTER_TYPES,
+    workerId,
+  );
   console.log("[WORKER PASSKEY FINISH REGISTRATION] Challenge validated");
 
   if (clientData.type !== "webauthn.create") {
@@ -851,7 +862,7 @@ export const beginWorkerPasskeyLogin = async (phoneNumber, origin) => {
 
   const worker = await Worker.findOne({ phoneNumber: phoneNumber.trim() });
   if (!worker) {
-    const challenge = await createChallenge("worker-login", null, phoneNumber);
+    const challenge = await createChallenge(LOGIN, null, phoneNumber);
     const rpId = getRpId(origin);
     return { allowCredentials: [], challenge, rpId };
   }
@@ -868,7 +879,7 @@ export const beginWorkerPasskeyLogin = async (phoneNumber, origin) => {
     transports: passkey.transports,
   }));
 
-  const challenge = await createChallenge("worker-login", worker._id, phoneNumber);
+  const challenge = await createChallenge(LOGIN, worker._id, phoneNumber);
   console.log("Generated worker login challenge (base64):", challenge);
 
   const rpId = getRpId(origin);
@@ -902,7 +913,7 @@ export const finishWorkerPasskeyLogin = async (credential, origin, clientDataJSO
 
   const challengeDoc = await Challenge.findOne({
     challenge,
-    type: "worker-login",
+    type: { $in: WORKER_LOGIN_TYPES },
     usedAt: { $exists: false },
     expiresAt: { $gt: new Date() },
   });

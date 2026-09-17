@@ -4,6 +4,12 @@ const cbor = require("cbor");
 const base64url = require("base64url");
 const Passkey = require("../models/passkeyModel");
 const Challenge = require("../models/challengeModel");
+const {
+  REGISTER,
+  LOGIN,
+  WORKER_REGISTER_TYPES,
+  WORKER_LOGIN_TYPES,
+} = require("../models/challengeTypes");
 const User = require("../models/userModel");
 const Worker = require("../models/Worker");
 const ApiError = require("../utils/apiError");
@@ -181,9 +187,10 @@ const validateChallenge = async (
   userId = null,
   email = null,
 ) => {
+  const types = Array.isArray(type) ? type : [type];
   const challengeDoc = await Challenge.findOne({
     challenge,
-    type,
+    type: { $in: types },
     $or: [{ userId: userId }, { email: email }],
   });
 
@@ -566,7 +573,9 @@ export const beginWorkerPasskeyRegistration = async (workerId, origin) => {
     throw new ApiError("Worker not found", 404);
   }
 
-  const challenge = await createChallenge("worker-register", id);
+  // Use shared `register` (not `worker-register`) so Challenge.create works
+  // even when the live schema enum is still only ["register","login"].
+  const challenge = await createChallenge(REGISTER, id);
   const rpId = getRpId(origin);
 
   return {
@@ -616,7 +625,11 @@ export const finishWorkerPasskeyRegistration = async (
   );
   const challenge = clientData.challenge;
 
-  const challengeDoc = await validateChallenge(challenge, "worker-register", id);
+  const challengeDoc = await validateChallenge(
+    challenge,
+    WORKER_REGISTER_TYPES,
+    id,
+  );
 
   if (clientData.type !== "webauthn.create") {
     throw new ApiError("Invalid client data type", 400);
@@ -663,7 +676,7 @@ export const beginWorkerPasskeyLogin = async (phoneNumber, origin) => {
 
   const worker = await Worker.findOne({ phoneNumber: phoneNumber.trim() });
   if (!worker) {
-    return unknownLoginOptions("worker-login", phoneNumber, origin);
+    return unknownLoginOptions(LOGIN, phoneNumber, origin);
   }
 
   const passkeys = await Passkey.find({
@@ -678,7 +691,7 @@ export const beginWorkerPasskeyLogin = async (phoneNumber, origin) => {
     transports: passkey.transports,
   }));
 
-  const challenge = await createChallenge("worker-login", worker._id, phoneNumber);
+  const challenge = await createChallenge(LOGIN, worker._id, phoneNumber);
   const rpId = getRpId(origin);
 
   return {
@@ -702,7 +715,7 @@ export const finishWorkerPasskeyLogin = async (credential, origin, clientDataJSO
 
   const challengeDoc = await Challenge.findOne({
     challenge,
-    type: "worker-login",
+    type: { $in: WORKER_LOGIN_TYPES },
     usedAt: { $exists: false },
     expiresAt: { $gt: new Date() },
   });

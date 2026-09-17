@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { cairoDatePlugin } = require("../utils/cairoDate");
+const { CHALLENGE_TYPES } = require("./challengeTypes");
 const challengeSchema = new mongoose.Schema(
   {
     challenge: {
@@ -11,7 +12,8 @@ const challengeSchema = new mongoose.Schema(
     type: {
       type: String,
       required: true,
-      enum: ["register", "login", "worker-register", "worker-login"],
+      // Keep worker-* for any leftover docs; new worker flows write register/login.
+      enum: CHALLENGE_TYPES,
       index: true,
     },
     userId: {
