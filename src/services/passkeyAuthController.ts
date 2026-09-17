@@ -150,7 +150,7 @@ exports.listPasskeys = asyncHandler(async (req, res, next) => {
   const userId = extractUserId(req, next); // 👈
   if (!userId) return;
 
-  const passkeys = await listUserPasskeys(userId);
+  const passkeys = await listUserPasskeys(userId, "admin");
   res.status(200).json({ status: "success", data: { passkeys } });
 });
 
@@ -254,6 +254,36 @@ exports.finishWorkerLogin = asyncHandler(async (req, res, next) => {
 
   const result = await finishWorkerPasskeyLogin(credential, origin, clientDataJSON);
 
+  res.status(200).json(result);
+});
+
+/**
+ * @desc    List worker passkeys
+ * @route   GET /api/V2/auth/worker/passkey/list
+ * @access  Private (authenticated worker)
+ */
+exports.listWorkerPasskeys = asyncHandler(async (req, res, next) => {
+  const userId = extractUserId(req, next);
+  if (!userId) return;
+
+  const passkeys = await listUserPasskeys(userId, "worker");
+  res.status(200).json({ status: "success", data: { passkeys } });
+});
+
+/**
+ * @desc    Revoke worker passkey
+ * @route   POST /api/V2/auth/worker/passkey/revoke
+ * @access  Private (authenticated worker)
+ */
+exports.revokeWorkerPasskey = asyncHandler(async (req, res, next) => {
+  const userId = extractUserId(req, next);
+  if (!userId) return;
+
+  const { credentialId } = req.body;
+  if (!credentialId)
+    return next(new ApiError("Credential ID is required", 400));
+
+  const result = await revokePasskey(userId, credentialId);
   res.status(200).json(result);
 });
 
