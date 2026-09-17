@@ -212,6 +212,26 @@ const markChallengeUsed = async (challengeId) => {
 };
 
 /**
+ * The assertion must be signed by a passkey that belongs to the same
+ * account the login challenge was issued for. A missing challenge userId
+ * (unknown email/phone) must also fail — otherwise a discoverable
+ * credential from another account can complete that challenge.
+ */
+const assertPasskeyBoundToChallenge = (challengeDoc, passkey) => {
+  if (!challengeDoc?.userId || !passkey?.userId) {
+    throw new ApiError("Passkey does not match this account", 400);
+  }
+  if (String(challengeDoc.userId) !== String(passkey.userId)) {
+    throw new ApiError("Passkey does not match this account", 400);
+  }
+};
+
+const unknownLoginOptions = async (type, identifier, origin) => {
+  const challenge = await createChallenge(type, null, identifier);
+  return { allowCredentials: [], challenge, rpId: getRpId(origin) };
+};
+
+/**
  * Begin passkey registration
  */
 export const beginPasskeyRegistration = async (userId, origin) => {
@@ -224,6 +244,11 @@ export const beginPasskeyRegistration = async (userId, origin) => {
   const user = await User.findById(resolvedUserId);
   if (!user) {
     throw new ApiError("User not found", 404);
+  }
+  // SECURITY: only admin accounts may register passkeys on the admin
+  // endpoints. Customers are User documents too and hold valid JWTs.
+  if (user.role !== "admin") {
+    throw new ApiError("Passkeys are only available for admin accounts", 403);
   }
 
   const challenge = await createChallenge("register", resolvedUserId);
@@ -272,6 +297,9 @@ export const finishPasskeyRegistration = async (
   const user = await User.findById(resolvedUserId);
   if (!user) {
     throw new ApiError("User not found", 404);
+  }
+  if (user.role !== "admin") {
+    throw new ApiError("Passkeys are only available for admin accounts", 403);
   }
 
   // FIX: Decode base64 before parsing
@@ -324,6 +352,7 @@ export const finishPasskeyRegistration = async (
     transports: response.transports || ["internal", "usb", "nfc", "ble"],
     aaguid: "00000000-0000-0000-0000-000000000000",
     label: `${user.name}'s Passkey`,
+    userType: "admin",
   };
 
   const newPasskey = await Passkey.create(passkeyData);
@@ -344,16 +373,17 @@ export const beginPasskeyLogin = async (email, origin) => {
   validateOrigin(origin);
 
   const user = await User.findOne({ email: email.toLowerCase().trim() });
-  if (!user) {
-    // Don't reveal if user exists for security
-    const challenge = await createChallenge("login", null, email);
-    const rpId = getRpId(origin);
-    return { allowCredentials: [], challenge, rpId };
+  // Same empty response for unknown emails AND non-admin users so we
+  // neither leak whether an account exists nor let a customer JWT/passkey
+  // reach the admin app.
+  if (!user || user.role !== "admin") {
+    return unknownLoginOptions("login", email, origin);
   }
 
   const passkeys = await Passkey.find({
     userId: user._id,
     revokedAt: { $exists: false },
+    userType: { $ne: "worker" },
   });
 
   const allowCredentials = passkeys.map((passkey) => ({
@@ -411,15 +441,19 @@ export const finishPasskeyLogin = async (credential, origin, clientDataJSON) => 
   const { id, response } = credential;
   const { authenticatorData, signature } = response;
 
-  // Find the stored passkey
+  // Find the stored passkey (admin passkeys only — worker passkeys
+  // must go through the worker login endpoints)
   const passkey = await Passkey.findOne({
     credentialId: base64url.encode(base64url.toBuffer(id)),
     revokedAt: { $exists: false },
+    userType: { $ne: "worker" },
   });
 
   if (!passkey) {
     throw new ApiError("Passkey not found", 400);
   }
+
+  assertPasskeyBoundToChallenge(challengeDoc, passkey);
 
   // FIX: Use proper WebAuthn signature verification
   // Signed data = authenticatorData bytes || SHA256(clientDataJSON raw bytes)
@@ -442,8 +476,8 @@ export const finishPasskeyLogin = async (credential, origin, clientDataJSON) => 
   }
 
   // Get user
-  const user = await User.findById(challengeDoc.userId || passkey.userId);
-  if (!user) {
+  const user = await User.findById(passkey.userId);
+  if (!user || user.role !== "admin") {
     throw new ApiError("User not found", 404);
   }
 
@@ -483,13 +517,13 @@ export const finishPasskeyLogin = async (credential, origin, clientDataJSON) => 
 /**
  * List user passkeys
  */
-export const listUserPasskeys = async (userId) => {
-  const passkeys = await Passkey.find({
+export const listUserPasskeys = async (userId, userType = "admin") => {
+  const filter: Record<string, unknown> = {
     userId,
     revokedAt: { $exists: false },
-  }).select("-publicKey");
-
-  return passkeys;
+    userType: userType === "worker" ? "worker" : { $ne: "worker" },
+  };
+  return Passkey.find(filter).select("-publicKey");
 };
 
 /**
@@ -521,36 +555,21 @@ export const revokePasskey = async (userId, credentialId) => {
  * Begin passkey registration for worker
  */
 export const beginWorkerPasskeyRegistration = async (workerId, origin) => {
-  console.log(
-    "[WORKER PASSKEY REGISTRATION] Starting registration for workerId:",
-    workerId,
-  );
-  console.log("[WORKER PASSKEY REGISTRATION] Origin:", origin);
-
   validateOrigin(origin);
-  const id = workerId?._id ?? workerId;
+  const id = workerId?._id ?? workerId?.userId ?? workerId;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    console.log("[WORKER PASSKEY REGISTRATION] Invalid worker ID format:", id);
     throw new ApiError("Invalid worker ID format", 400);
   }
-  const worker = await Worker.findById(workerId);
+  const worker = await Worker.findById(id);
   if (!worker) {
-    console.log("[WORKER PASSKEY REGISTRATION] Worker not found:", workerId);
     throw new ApiError("Worker not found", 404);
   }
 
-  console.log("[WORKER PASSKEY REGISTRATION] Worker found:", worker.name);
-  const challenge = await createChallenge("worker-register", workerId);
-  console.log(
-    "[WORKER PASSKEY REGISTRATION] Generated challenge (base64):",
-    challenge,
-  );
-
+  const challenge = await createChallenge("worker-register", id);
   const rpId = getRpId(origin);
-  console.log("[WORKER PASSKEY REGISTRATION] Dynamic RP_ID for origin:", rpId);
 
-  const options = {
+  return {
     challenge: challenge,
     rp: {
       name: RP_NAME,
@@ -573,12 +592,6 @@ export const beginWorkerPasskeyRegistration = async (workerId, origin) => {
       residentKey: "preferred",
     },
   };
-
-  console.log(
-    "[WORKER PASSKEY REGISTRATION] Returning options:",
-    JSON.stringify(options, null, 2),
-  );
-  return options;
 };
 
 /**
@@ -590,114 +603,51 @@ export const finishWorkerPasskeyRegistration = async (
   origin,
   clientDataJSON,
 ) => {
-  console.log("[WORKER PASSKEY FINISH REGISTRATION] Starting finish registration");
-  console.log("[WORKER PASSKEY FINISH REGISTRATION] workerId:", workerId);
-  console.log("[WORKER PASSKEY FINISH REGISTRATION] origin:", origin);
-
   validateOrigin(origin);
 
-  const worker = await Worker.findById(workerId);
+  const id = workerId?._id ?? workerId?.userId ?? workerId;
+  const worker = await Worker.findById(id);
   if (!worker) {
-    console.log("[WORKER PASSKEY FINISH REGISTRATION] Worker not found:", workerId);
     throw new ApiError("Worker not found", 404);
   }
-
-  console.log("[WORKER PASSKEY FINISH REGISTRATION] Worker found:", worker.name);
 
   const clientData = JSON.parse(
     Buffer.from(clientDataJSON, "base64").toString("utf8"),
   );
   const challenge = clientData.challenge;
 
-  console.log(
-    "[WORKER PASSKEY FINISH REGISTRATION] Client data challenge:",
-    challenge,
-  );
-  console.log(
-    "[WORKER PASSKEY FINISH REGISTRATION] Client data type:",
-    clientData.type,
-  );
-  console.log(
-    "[WORKER PASSKEY FINISH REGISTRATION] Client data origin:",
-    clientData.origin,
-  );
-
-  const challengeDoc = await validateChallenge(challenge, "worker-register", workerId);
-  console.log("[WORKER PASSKEY FINISH REGISTRATION] Challenge validated");
+  const challengeDoc = await validateChallenge(challenge, "worker-register", id);
 
   if (clientData.type !== "webauthn.create") {
-    console.log(
-      "[WORKER PASSKEY FINISH REGISTRATION] Invalid client data type:",
-      clientData.type,
-    );
     throw new ApiError("Invalid client data type", 400);
   }
 
   if (clientData.origin !== origin) {
-    console.log(
-      "[WORKER PASSKEY FINISH REGISTRATION] Origin mismatch:",
-      clientData.origin,
-      "vs",
-      origin,
-    );
     throw new ApiError("Origin mismatch", 400);
   }
 
-  const { id, response } = credential;
-  console.log("[WORKER PASSKEY FINISH REGISTRATION] Credential ID:", id);
-  console.log(
-    "[WORKER PASSKEY FINISH REGISTRATION] Response has attestationObject:",
-    !!response.attestationObject,
-  );
+  const { id: credentialIdRaw, response } = credential;
 
   const attestationBuffer = base64url.toBuffer(response.attestationObject);
   const attestation = cbor.decodeFirstSync(attestationBuffer);
   const authData = attestation.authData;
 
-  console.log(
-    "[WORKER PASSKEY FINISH REGISTRATION] Auth data length:",
-    authData.length,
-  );
-
   const credentialIdLength = authData.readUInt16BE(53);
   const publicKeyBytes = authData.slice(55 + credentialIdLength);
-
-  console.log(
-    "[WORKER PASSKEY FINISH REGISTRATION] Credential ID length:",
-    credentialIdLength,
-  );
-  console.log(
-    "[WORKER PASSKEY FINISH REGISTRATION] Public key bytes length:",
-    publicKeyBytes.length,
-  );
-
   const counter = authData.readUInt32BE(33);
-  console.log("[WORKER PASSKEY FINISH REGISTRATION] Counter:", counter);
 
-  const passkeyData = {
+  await Passkey.create({
     userId: worker._id,
-    credentialId: base64url.encode(base64url.toBuffer(id)),
+    credentialId: base64url.encode(base64url.toBuffer(credentialIdRaw)),
     publicKey: base64url.encode(publicKeyBytes),
     counter,
     transports: response.transports || ["internal", "usb", "nfc", "ble"],
     aaguid: "00000000-0000-0000-0000-000000000000",
     label: `${worker.name}'s Passkey`,
     userType: "worker",
-  };
-
-  console.log(
-    "[WORKER PASSKEY FINISH REGISTRATION] Creating passkey with data:",
-    JSON.stringify(passkeyData, null, 2),
-  );
-
-  const newPasskey = await Passkey.create(passkeyData);
-  console.log(
-    "[WORKER PASSKEY FINISH REGISTRATION] Passkey created successfully:",
-    newPasskey._id,
-  );
+  });
 
   await markChallengeUsed(challengeDoc._id);
-  console.log("[WORKER PASSKEY FINISH REGISTRATION] Challenge marked as used");
 
   return {
     status: "success",
@@ -713,9 +663,7 @@ export const beginWorkerPasskeyLogin = async (phoneNumber, origin) => {
 
   const worker = await Worker.findOne({ phoneNumber: phoneNumber.trim() });
   if (!worker) {
-    const challenge = await createChallenge("worker-login", null, phoneNumber);
-    const rpId = getRpId(origin);
-    return { allowCredentials: [], challenge, rpId };
+    return unknownLoginOptions("worker-login", phoneNumber, origin);
   }
 
   const passkeys = await Passkey.find({
@@ -731,10 +679,7 @@ export const beginWorkerPasskeyLogin = async (phoneNumber, origin) => {
   }));
 
   const challenge = await createChallenge("worker-login", worker._id, phoneNumber);
-  console.log("Generated worker login challenge (base64):", challenge);
-
   const rpId = getRpId(origin);
-  console.log("[WORKER PASSKEY LOGIN] Dynamic RP_ID for origin:", rpId);
 
   return {
     allowCredentials,
@@ -748,19 +693,12 @@ export const beginWorkerPasskeyLogin = async (phoneNumber, origin) => {
  * Finish passkey login for worker
  */
 export const finishWorkerPasskeyLogin = async (credential, origin, clientDataJSON) => {
-  console.log("[WORKER PASSKEY FINISH LOGIN] Starting finish login");
-  console.log("[WORKER PASSKEY FINISH LOGIN] Origin:", origin);
-
   validateOrigin(origin);
 
   const clientData = JSON.parse(
     Buffer.from(clientDataJSON, "base64").toString("utf8"),
   );
   const challenge = clientData.challenge;
-
-  console.log("[WORKER PASSKEY FINISH LOGIN] Client data challenge:", challenge);
-  console.log("[WORKER PASSKEY FINISH LOGIN] Client data type:", clientData.type);
-  console.log("[WORKER PASSKEY FINISH LOGIN] Client data origin:", clientData.origin);
 
   const challengeDoc = await Challenge.findOne({
     challenge,
@@ -770,39 +708,19 @@ export const finishWorkerPasskeyLogin = async (credential, origin, clientDataJSO
   });
 
   if (!challengeDoc) {
-    console.log("[WORKER PASSKEY FINISH LOGIN] Challenge not found or expired");
     throw new ApiError("Invalid or expired challenge", 400);
   }
 
-  console.log("[WORKER PASSKEY FINISH LOGIN] Challenge validated");
-
   if (clientData.type !== "webauthn.get") {
-    console.log(
-      "[WORKER PASSKEY FINISH LOGIN] Invalid client data type:",
-      clientData.type,
-    );
     throw new ApiError("Invalid client data type", 400);
   }
 
   if (clientData.origin !== origin) {
-    console.log(
-      "[WORKER PASSKEY FINISH LOGIN] Origin mismatch:",
-      clientData.origin,
-      "vs",
-      origin,
-    );
     throw new ApiError("Origin mismatch", 400);
   }
 
   const { id, response } = credential;
   const { authenticatorData, signature } = response;
-
-  console.log("[WORKER PASSKEY FINISH LOGIN] Credential ID:", id);
-  console.log(
-    "[WORKER PASSKEY FINISH LOGIN] Has authenticatorData:",
-    !!authenticatorData,
-  );
-  console.log("[WORKER PASSKEY FINISH LOGIN] Has signature:", !!signature);
 
   const passkey = await Passkey.findOne({
     credentialId: base64url.encode(base64url.toBuffer(id)),
@@ -811,14 +729,10 @@ export const finishWorkerPasskeyLogin = async (credential, origin, clientDataJSO
   });
 
   if (!passkey) {
-    console.log(
-      "[WORKER PASSKEY FINISH LOGIN] Passkey not found for credential ID:",
-      id,
-    );
     throw new ApiError("Passkey not found", 400);
   }
 
-  console.log("[WORKER PASSKEY FINISH LOGIN] Passkey found, worker ID:", passkey.userId);
+  assertPasskeyBoundToChallenge(challengeDoc, passkey);
 
   const isValidSignature = verifyWebAuthnSignature(
     passkey.publicKey,
@@ -828,32 +742,19 @@ export const finishWorkerPasskeyLogin = async (credential, origin, clientDataJSO
   );
 
   if (!isValidSignature) {
-    console.log("[WORKER PASSKEY FINISH LOGIN] Signature verification failed");
     throw new ApiError("Signature verification failed", 400);
   }
 
-  console.log("[WORKER PASSKEY FINISH LOGIN] Signature verified successfully");
-
   const currentCounter = base64url.toBuffer(authenticatorData).readUInt32BE(33);
-  console.log(
-    "[WORKER PASSKEY FINISH LOGIN] Current counter:",
-    currentCounter,
-    "Stored counter:",
-    passkey.counter,
-  );
 
   if (currentCounter < passkey.counter) {
-    console.log("[WORKER PASSKEY FINISH LOGIN] Counter replay attack detected");
     throw new ApiError("Counter replay attack detected", 400);
   }
 
-  const worker = await Worker.findById(challengeDoc.userId || passkey.userId);
+  const worker = await Worker.findById(passkey.userId);
   if (!worker) {
-    console.log("[WORKER PASSKEY FINISH LOGIN] Worker not found");
     throw new ApiError("Worker not found", 404);
   }
-
-  console.log("[WORKER PASSKEY FINISH LOGIN] Worker found:", worker.name);
 
   await Passkey.findByIdAndUpdate(passkey._id, {
     counter: currentCounter,
@@ -862,12 +763,12 @@ export const finishWorkerPasskeyLogin = async (credential, origin, clientDataJSO
 
   await markChallengeUsed(challengeDoc._id);
 
-  const authToken = createToken({ userId: worker._id, userType: "worker" });
+  // Same token shape as POST /auth/worker/login so permissions and
+  // checkPermission resolve the worker id the same way.
+  const authToken = createToken(worker._id);
 
   const workerResponse = { ...worker._doc };
   delete workerResponse.generatedPassword;
-
-  console.log("[WORKER PASSKEY FINISH LOGIN] Login successful for worker:", worker.name);
 
   return {
     status: "success",

@@ -11,7 +11,7 @@ const challengeSchema = new mongoose.Schema(
     type: {
       type: String,
       required: true,
-      enum: ["register", "login"],
+      enum: ["register", "login", "worker-register", "worker-login"],
       index: true,
     },
     userId: {

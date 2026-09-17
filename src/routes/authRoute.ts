@@ -28,6 +28,8 @@ const {
   finishWorkerRegistration,
   beginWorkerLogin,
   finishWorkerLogin,
+  listWorkerPasskeys,
+  revokeWorkerPasskey,
 } = require("../services/passkeyAuthController");
 
 const router = express.Router();
@@ -659,5 +661,45 @@ router.post("/worker/passkey/login/begin", beginWorkerLogin);
  *         description: Login failed
  */
 router.post("/worker/passkey/login/finish", finishWorkerLogin);
+
+/**
+ * @swagger
+ * /auth/worker/passkey/list:
+ *   get:
+ *     summary: List the signed-in worker's passkeys
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of worker passkeys
+ */
+router.get("/worker/passkey/list", verifyToken, listWorkerPasskeys);
+
+/**
+ * @swagger
+ * /auth/worker/passkey/revoke:
+ *   post:
+ *     summary: Revoke a worker passkey
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [credentialId]
+ *             properties:
+ *               credentialId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Passkey revoked
+ *       404:
+ *         description: Passkey not found
+ */
+router.post("/worker/passkey/revoke", verifyToken, revokeWorkerPasskey);
 
 export = router;

@@ -4,8 +4,15 @@ const passkeySchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
       required: true,
+      index: true,
+    },
+    // "admin" (default) or "worker". Existing documents with no field
+    // are treated as admin by queries that use userType: { $ne: "worker" }.
+    userType: {
+      type: String,
+      enum: ["admin", "worker"],
+      default: "admin",
       index: true,
     },
     credentialId: {
