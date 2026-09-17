@@ -31,4 +31,8 @@ const inventorySchema = new mongoose.Schema(
   { timestamps: true },
 );
 inventorySchema.plugin(cairoDatePlugin);
+
+inventorySchema.index({ name: 1 });
+inventorySchema.index({ Code: 1 });
+
 export = mongoose.model("Inventory", inventorySchema);

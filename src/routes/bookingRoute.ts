@@ -82,15 +82,19 @@ router.route("/").post(createBookingRequest);
 router.route("/requests").get(getallUserRequests);
 /**
  * @swagger
- * /booking/requests:
+ * /booking/allrequests:
  *   get:
- *     summary: Get all booking requests
+ *     summary: Get all booking requests (admin)
  *     tags: [Booking]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: List of users maintenance requests
  */
-router.route("/allrequests").get(getallRequests);
+router
+  .route("/allrequests")
+  .get(authService.allowedTo("admin"), getallRequests);
 
 /**
  * @swagger
@@ -170,6 +174,8 @@ router.route("/:id").get(getSpacificRequest).put(cancelRequest);
  *       400:
  *         description: Request already cancelled 
  */
-router.route("/admin/:id").put(ReplyofRequest);
+router
+  .route("/admin/:id")
+  .put(authService.allowedTo("admin"), ReplyofRequest);
 
 export = router;

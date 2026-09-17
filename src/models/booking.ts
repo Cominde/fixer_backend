@@ -45,4 +45,8 @@ const BookingSchema = new mongoose.Schema(
 );
 BookingSchema.plugin(cairoDatePlugin);
 
+BookingSchema.index({ user: 1, createdAt: -1 });
+BookingSchema.index({ status: 1, createdAt: -1 });
+BookingSchema.index({ car: 1 });
+
 export = mongoose.model("Booking", BookingSchema);

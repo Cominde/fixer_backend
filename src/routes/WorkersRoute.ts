@@ -18,6 +18,7 @@ const {
   clearWorkerImage,
   setWorkerPassword,
   getWorkerRepairCount,
+  getLoggedInWorker,
 } = require("../services/WorksServices");
 
 const {
@@ -96,6 +97,24 @@ const { processWorkerImage } = require("../middlewares/uploadImageCloud");
  *         description: Validation error - invalid phone number
  */
 router.route("/").get(checkPermission("workers.view"), getAllWorkers).post(checkPermission("workers.add"), addWorkerValidator, addWorker);
+
+/**
+ * @swagger
+ * /Worker/me:
+ *   get:
+ *     summary: Get the signed-in worker's own profile
+ *     tags: [Workers]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logged-in worker profile including photo and salary
+ *       401:
+ *         description: Missing or invalid token
+ *       403:
+ *         description: Token is not a worker account
+ */
+router.route("/me").get(getLoggedInWorker);
 
 /**
  * @swagger
@@ -525,7 +544,7 @@ router.route("/:id/image").delete(
  *       404:
  *         description: Worker not found
  */
-router.route("/:id/password").post(setWorkerPassword);
+router.route("/:id/password").post(checkPermission("workers.edit"), setWorkerPassword);
 
 /**
  * @swagger

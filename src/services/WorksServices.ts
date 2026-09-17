@@ -106,9 +106,47 @@ export const searchForWorker = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc get spacific Worker
-// @Route GET /api/v1/Worker
-// @access private
+// @desc logged-in worker reads their own profile (photo, salary, loans)
+// @Route GET /api/V1/Worker/me
+// @access private (any worker token — no workers.view required)
+export const getLoggedInWorker = asyncHandler(async (req, res, next) => {
+  let token;
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer ")
+  ) {
+    token = req.headers.authorization.split(" ")[1];
+  }
+  if (!token) {
+    return next(
+      new apiError(
+        "You are not login, Please login to get access this route",
+        401,
+      ),
+    );
+  }
+
+  const jwt = require("jsonwebtoken");
+  const { resolveUserIdFromDecoded } = require("../utils/jwtPayload");
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+  } catch (_) {
+    return next(new apiError("Invalid or expired token", 401));
+  }
+  const workerId = resolveUserIdFromDecoded(decoded);
+  const worker = await Worker.findById(workerId).populate("roleId");
+  if (!worker) {
+    return next(
+      new apiError("Worker profile is only available to workers", 403),
+    );
+  }
+
+  const workerResponse = worker.toObject();
+  delete workerResponse.generatedPassword;
+  res.status(200).json({ data: workerResponse });
+});
+
 export const getSpacificWorker = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const worker = await Worker.findById(id);
@@ -259,6 +297,16 @@ export const moneyFromToworker = asyncHandler(async (req, res, next) => {
   if (!worker) {
     return next(
       new apiError(`Can't find worker with this national id ${id}`, 404),
+    );
+  }
+
+  const actorId = req.user?._id != null ? String(req.user._id) : "";
+  if (actorId && actorId === String(id)) {
+    return next(
+      new apiError(
+        "You cannot add a loan, penalty, or reward to yourself",
+        403,
+      ),
     );
   }
 

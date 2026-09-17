@@ -179,4 +179,12 @@ repairingSchema.pre('save', function(next) {
 });
 
 repairingSchema.plugin(cairoDatePlugin);
+
+// Query paths used by garage lists / search / car history
+repairingSchema.index({ carNumber: 1, createdAt: -1 });
+repairingSchema.index({ generatedCode: 1 });
+repairingSchema.index({ genId: 1 });
+repairingSchema.index({ carId: 1 });
+repairingSchema.index({ complete: 1, createdAt: -1 });
+
 export = mongoose.model("repairing", repairingSchema);

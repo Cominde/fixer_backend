@@ -1,12 +1,17 @@
 const mongoose = require("mongoose");
+const path = require("path");
 const Permission = require("../models/Permission");
 const registry = require("../utils/permissions/registry");
 
-require("dotenv").config({path : "../config.env"});
+require("dotenv").config({ path: path.join(__dirname, "../../config.env") });
 
 async function seedPermissions() {
   try {
-    await mongoose.connect("mongodb+srv://Fixer_center:FF_120594@cluster0.bimweny.mongodb.net/Fixer_DB?retryWrites=true&w=majority&authSource=admin");
+    const dbUrl = process.env.DB_URL;
+    if (!dbUrl) {
+      throw new Error("DB_URL is missing from config.env");
+    }
+    await mongoose.connect(dbUrl);
     console.log("Connected to MongoDB");
 
     // Clear existing permissions

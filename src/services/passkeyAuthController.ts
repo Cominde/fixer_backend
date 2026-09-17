@@ -1,5 +1,4 @@
 const asyncHandler = require("express-async-handler");
-const jwt = require("jsonwebtoken");
 const ApiError = require("../utils/apiError");
 const {
   beginPasskeyRegistration,
@@ -13,12 +12,18 @@ const {
   beginWorkerPasskeyLogin,
   finishWorkerPasskeyLogin,
 } = require("./webauthnService");
+const {
+  getBearerToken,
+  verifyAndResolveUserId,
+} = require("../utils/jwtPayload");
 
+/**
+ * Resolve authenticated user/worker id from Bearer token.
+ * Returns a plain string id — same shape webauthnService already accepts
+ * (userId?._id ?? userId?.userId ?? userId). No FE/API response changes.
+ */
 const extractUserId = (req, next) => {
-  let token;
-  if (req.headers.authorization?.startsWith("Bearer ")) {
-    token = req.headers.authorization.split(" ")[1];
-  }
+  const token = getBearerToken(req);
   if (!token) {
     next(
       new ApiError(
@@ -28,8 +33,21 @@ const extractUserId = (req, next) => {
     );
     return null;
   }
-  const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-  return decoded.userId;
+  try {
+    const { userId } = verifyAndResolveUserId(token);
+    if (!userId) {
+      next(new ApiError("Invalid token", 401));
+      return null;
+    }
+    return userId;
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      next(new ApiError("Expired token, please login again..", 401));
+      return null;
+    }
+    next(new ApiError("Invalid token, please login again..", 401));
+    return null;
+  }
 };
 /**
  * @desc    Begin passkey registration

@@ -204,11 +204,8 @@ export const getMyPermissions = asyncHandler(async (req, res, next) => {
     }
   
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    //check if user exists
-    const workerId =
-      decoded.userId && decoded.userId.userId
-        ? decoded.userId.userId
-        : decoded.userId;
+    const { resolveUserIdFromDecoded } = require("../utils/jwtPayload");
+    const workerId = resolveUserIdFromDecoded(decoded);
 
   // Validate worker exists
   const worker = await Worker.findById(workerId).populate("roleId");

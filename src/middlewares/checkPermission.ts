@@ -5,6 +5,9 @@ const WorkerPermission = require("../models/WorkerPermission");
 const User = require("../models/userModel");
 const ApiError = require("../utils/apiError");
 const jwt = require("jsonwebtoken");
+const {
+  resolveUserIdFromDecoded,
+} = require("../utils/jwtPayload");
 
 /**
  * Check if a user/worker has a specific permission.
@@ -47,11 +50,8 @@ export const checkPermission = (permissionKey) => {
         return next(new ApiError("Invalid or expired token", 401));
       }
 
-      // Get user ID from decoded token
-      const userId =
-        decoded.userId && decoded.userId.userId
-          ? decoded.userId.userId
-          : decoded.userId;
+      // Get user ID from decoded token (same resolver as protect / verifyToken)
+      const userId = resolveUserIdFromDecoded(decoded);
       // 2. Check if the user is a worker
       const worker = await Worker.findById(userId).populate('roleId');
 

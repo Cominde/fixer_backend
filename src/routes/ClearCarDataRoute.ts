@@ -7,6 +7,7 @@ const {
   getAllBrands,
   getAllCategory,
 } = require("../services/clean_car_data");
+const authService = require("../services/authService");
 
 /**
  * @swagger
@@ -14,6 +15,10 @@ const {
  *   name: Car Data Cleanup
  *   description: Clean and normalize car brands and categories in the database
  */
+
+// Destructive / sensitive — admin only
+router.use(authService.protect);
+router.use(authService.allowedTo("admin"));
 
 /**
  * @swagger
