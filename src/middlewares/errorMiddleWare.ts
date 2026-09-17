@@ -20,9 +20,12 @@ const handleJwtInvalidSignature = () =>
 const handleJwtExpired = () =>
   new ApiError("Expired token, please login again..", 401);
 
+const handleCastError = () => new ApiError("Resource not found", 404);
+
 const globalError = (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || "error";
+  if (err.name === "CastError") err = handleCastError();
   if (process.env.NODE_ENV === "development") {
     sendErrorForDev(err, res);
   } else {

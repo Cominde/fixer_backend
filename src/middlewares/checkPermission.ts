@@ -52,6 +52,9 @@ export const checkPermission = (permissionKey) => {
 
       // Get user ID from decoded token (same resolver as protect / verifyToken)
       const userId = resolveUserIdFromDecoded(decoded);
+      if (typeof userId !== "string" || !/^[a-fA-F0-9]{24}$/.test(userId)) {
+        return next(new ApiError("Invalid or expired token", 401));
+      }
       // 2. Check if the user is a worker
       const worker = await Worker.findById(userId).populate('roleId');
 
