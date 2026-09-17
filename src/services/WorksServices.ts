@@ -12,6 +12,10 @@ const {
   isSharedWorkerDefaultPublicId,
 } = require("../utils/workerImage");
 
+function isMongoObjectId(id: unknown): id is string {
+  return typeof id === "string" && /^[a-fA-F0-9]{24}$/.test(id);
+}
+
 /** Photo fields must only be written via POST/DELETE …/image */
 function stripWorkerImageFields(body: Record<string, unknown>) {
   if (!body || typeof body !== "object") return;
@@ -135,6 +139,11 @@ export const getLoggedInWorker = asyncHandler(async (req, res, next) => {
     return next(new apiError("Invalid or expired token", 401));
   }
   const workerId = resolveUserIdFromDecoded(decoded);
+  if (!isMongoObjectId(workerId)) {
+    return next(
+      new apiError("Worker profile is only available to workers", 403),
+    );
+  }
   const worker = await Worker.findById(workerId).populate("roleId");
   if (!worker) {
     return next(
@@ -149,6 +158,9 @@ export const getLoggedInWorker = asyncHandler(async (req, res, next) => {
 
 export const getSpacificWorker = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
+  if (!isMongoObjectId(id)) {
+    return next(new apiError(`No document for this id ${id}`, 404));
+  }
   const worker = await Worker.findById(id);
 
   if (!worker) {
@@ -239,6 +251,9 @@ export const getAllWorkersWithSalary = asyncHandler(async (req, res, next) => {
 // @access private
 export const getWorkerWithSalaryById = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
+  if (!isMongoObjectId(id)) {
+    return next(new apiError(`No worker for this id ${id}`, 404));
+  }
   const worker = await Worker.findById(id);
 
   if (!worker) {
