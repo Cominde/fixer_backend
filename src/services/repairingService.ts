@@ -1457,7 +1457,7 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
   }
   if (req.body.daysItTake) {
     const expectedDate = new Date();
-    if(Number(req.body.daysItTake) > 0){
+    if(Nu٣mber(req.body.daysItTake) > 0){
       expectedDate.setDate(expectedDate.getDate() + parseInt(req.body.daysItTake));
     }
     repair.expectedDate = expectedDate;
@@ -1469,7 +1469,14 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
     repair.Note2 = req.body.Note2;
   }
   if (req.body.distance !== undefined && req.body.distance !== "") {
-    repair.distance = toMoney(req.body.distance);
+    const car_distance = await Car.findByIdAndUpdate(
+      repair.carId,
+      { distance : distance },
+      { new: true },
+    );
+    repair.distance = req.body.distance;
+    
+    
   }
 
   // Invoice attribution — only overwrite when the client sends the keys.
