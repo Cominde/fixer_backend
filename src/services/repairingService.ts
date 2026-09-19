@@ -1457,7 +1457,7 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
   }
   if (req.body.daysItTake) {
     const expectedDate = new Date();
-    if(Nu٣mber(req.body.daysItTake) > 0){
+    if(Number(req.body.daysItTake) > 0){
       expectedDate.setDate(expectedDate.getDate() + parseInt(req.body.daysItTake));
     }
     repair.expectedDate = expectedDate;
@@ -1471,7 +1471,7 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
   if (req.body.distance !== undefined && req.body.distance !== "") {
     const car_distance = await Car.findByIdAndUpdate(
       repair.carId,
-      { distance : distance },
+      { distance : req.body.distance },
       { new: true },
     );
     repair.distance = req.body.distance;
