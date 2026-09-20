@@ -22,10 +22,26 @@ const handleJwtExpired = () =>
 
 const handleCastError = () => new ApiError("Resource not found", 404);
 
+const handleMulterError = (err) => {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return new ApiError('File size too large (max 8MB)', 400);
+  }
+  if (err.code === 'LIMIT_FILE_COUNT') {
+    return new ApiError('Too many files uploaded', 400);
+  }
+  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return new ApiError('Unexpected file field', 400);
+  }
+  return new ApiError(`File upload error: ${err.message}`, 400);
+};
+
 const globalError = (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || "error";
+  
   if (err.name === "CastError") err = handleCastError();
+  if (err.name === "MulterError") err = handleMulterError(err);
+  
   if (process.env.NODE_ENV === "development") {
     sendErrorForDev(err, res);
   } else {

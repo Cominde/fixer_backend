@@ -65,6 +65,40 @@ async function resolveReceptionForRequest(req) {
 // @access private
 
 export const createRepairing = asyncHandler(async (req, res, next) => {
+  // Check if body is empty after normalization
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new apiError('Request body cannot be empty', 400));
+  }
+
+  // Whitelist allowed fields to prevent mass assignment
+  const allowedFields = [
+    'components',
+    'services',
+    'additions',
+    'carNumber',
+    'type',
+    'discount',
+    'daysItTake',
+    'nextRepairDate',
+    'Note1',
+    'Note2',
+    'distance',
+    'nextRepairDistance',
+    'technicians',
+    'manually',
+    'id',
+    'reception',
+    'representative'
+  ];
+
+  // Filter body to only include allowed fields
+  const filteredBody: any = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      filteredBody[field] = req.body[field];
+    }
+  }
+
   let totalPrice = 0;
   let totalServicesCount = 0;
   let completedServices = 0;
@@ -87,11 +121,11 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
     distance,
     nextRepairDistance,
     technicians,
-  } = req.body;
+  } = filteredBody;
   // For non-periodic repairs or when nextRepairDate/nextRepairDistance are empty, get values from last periodic repair
-  let finalDistance = req.body.distance;
-  let nextDistance = req.body.nextRepairDistance;
-  let nextRDate = req.body.nextRepairDate;
+  let finalDistance = filteredBody.distance;
+  let nextDistance = filteredBody.nextRepairDistance;
+  let nextRDate = filteredBody.nextRepairDate;
   if (type === "nonPeriodic" || nextRepairDate === "" || nextRepairDistance === "") {
     const lastPeriodicRepair = await Repairing.findOne({
       carNumber: carNumber,
@@ -110,8 +144,8 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
       finalDistance = 0;
     }
   }
-  if (req.body.manually == "True" || req.body.manually == true) {
-    const id = req.body.id;
+  if (filteredBody.manually == "True" || filteredBody.manually == true) {
+    const id = filteredBody.id;
     const parsedCarCode = parseInt(id, 10);
 
     if (isNaN(parsedCarCode) || !Number.isInteger(parsedCarCode)) {
@@ -378,6 +412,42 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
 // @route   POST /api/v1/repairing/walkIn
 // @access  Private
 export const walkInRepair = asyncHandler(async (req, res, next) => {
+  // Check if body is empty after normalization
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new apiError('Request body cannot be empty', 400));
+  }
+
+  // Whitelist allowed fields to prevent mass assignment
+  const allowedFields = [
+    'components',
+    'services',
+    'additions',
+    'clientName',
+    'carNumber',
+    'brand',
+    'category',
+    'model',
+    'type',
+    'discount',
+    'daysItTake',
+    'Note1',
+    'Note2',
+    'distance',
+    'technicians',
+    'manually',
+    'id',
+    'reception',
+    'representative'
+  ];
+
+  // Filter body to only include allowed fields
+  const filteredBody: any = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      filteredBody[field] = req.body[field];
+    }
+  }
+
   let totalPrice = 0;
   let totalServicesCount = 0;
   let completedServices = 0;
@@ -400,7 +470,7 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
     Note2,
     distance,
     technicians,
-  } = req.body;
+  } = filteredBody;
 
   // Validate required fields
   if (!clientName || !carNumber || !brand || !category || !model) {
@@ -413,8 +483,8 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
   }
 
   // Generate genId (same logic as createRepairing)
-  if (req.body.manually == "True" || req.body.manually == true) {
-    const id = req.body.id;
+  if (filteredBody.manually == "True" || filteredBody.manually == true) {
+    const id = filteredBody.id;
     const parsedCarCode = parseInt(id, 10);
 
     if (isNaN(parsedCarCode) || !Number.isInteger(parsedCarCode)) {
@@ -481,6 +551,9 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
       ),
     );
   }
+
+  // Normalize car number
+  const normalizedCarNumber = normalizeCarNumber(carNumber);
 
   const repairDetails = [];
 
@@ -1075,6 +1148,11 @@ export const suggestNextCodeNumber = asyncHandler(async (req, res, next) => {
 // @Route PUT /api/v1/repair/update/:id
 // @access private
 export const updateRepair = asyncHandler(async (req, res, next) => {
+  // Check if body is empty after normalization
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new apiError('Request body cannot be empty', 400));
+  }
+
   const repair = await Repairing.findById(req.params.id);
 
   if (!repair) {
@@ -1111,7 +1189,7 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
       const qty = toMoney(quantity);
       //search in the repair components
       const repairComponent = repair.component.find(
-        (comp) => comp._id.toString() === componentId,
+        (comp: any) => comp._id.toString() === componentId,
       );
       
       if (repairComponent) {

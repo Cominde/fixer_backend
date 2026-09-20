@@ -101,12 +101,50 @@ export const getUser = factory.getOne(User);
 // @route   POST  /api/v1/users
 // @access  Private/Admin
 export const createUser = asyncHandler(async (req, res, next) => {
+  // Check if body is empty after normalization
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new ApiError('Request body cannot be empty', 400));
+  }
+
+  // Whitelist allowed fields to prevent mass assignment
+  const allowedFields = [
+    'name',
+    'email',
+    'phoneNumber',
+    'role',
+    'image',
+    'imagePublicId',
+    'carNumber',
+    'chassisNumber',
+    'color',
+    'brand',
+    'category',
+    'model',
+    'distances',
+    'motorNumber',
+    'nextRepairDate',
+    'lastRepairDate',
+    'periodicRepairs',
+    'nonPeriodicRepairs',
+    'clientType',
+    'manually',
+    'carCode'
+  ];
+
+  // Filter body to only include allowed fields
+  const filteredBody: any = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      filteredBody[field] = req.body[field];
+    }
+  }
+
   const generatedPassword = await generateUniqueCode();
   //const generatedPassword = crypto.randomBytes(6).toString("hex").toUpperCase();
   //console.log("generated code", generatedCode);
   //console.log("generated Password", generatedPassword);
   // 1- Create user
-  let { carNumber, clientType } = req.body;
+  let { carNumber, clientType } = filteredBody;
   carNumber = normalizeCarNumber(carNumber);
   let newCarCode;
   //const fuser = await Car.findOne({ email });
@@ -122,14 +160,14 @@ export const createUser = asyncHandler(async (req, res, next) => {
       ),
     );
   }
-  if (req.body.manually == "True" || req.body.manually == "true") {
+  if (filteredBody.manually == "True" || filteredBody.manually == "true") {
     const categoryCode = await CategoryCode.findOne({ category: clientType });
     if (!categoryCode) {
       return next(
         new ApiError(`There is no type with this name ${clientType}`, 400),
       );
     }
-    const carCode = req.body.carCode;
+    const carCode = filteredBody.carCode;
     const parsedCarCode = parseInt(carCode, 10);
 
     if (isNaN(parsedCarCode) || !Number.isInteger(parsedCarCode)) {
@@ -186,41 +224,41 @@ export const createUser = asyncHandler(async (req, res, next) => {
   }
 
   const newCar = await Car.create({
-    ownerName: req.body.name,
+    ownerName: filteredBody.name,
     carNumber: carNumber,
-    chassisNumber: req.body.chassisNumber,
-    color: req.body.color,
-    brand: req.body.brand,
-    category: req.body.category,
-    model: req.body.model,
+    chassisNumber: filteredBody.chassisNumber,
+    color: filteredBody.color,
+    brand: filteredBody.brand,
+    category: filteredBody.category,
+    model: filteredBody.model,
     generatedCode: newCarCode,
-    distances: req.body.distances,
-    motorNumber: req.body.motorNumber,
-    nextRepairDate: req.body.nextRepairDate,
-    lastRepairDate: req.body.lastRepairDate,
-    periodicRepairs: req.body.periodicRepairs,
-    nonPeriodicRepairs: req.body.nonPeriodicRepairs,
+    distances: filteredBody.distances,
+    motorNumber: filteredBody.motorNumber,
+    nextRepairDate: filteredBody.nextRepairDate,
+    lastRepairDate: filteredBody.lastRepairDate,
+    periodicRepairs: filteredBody.periodicRepairs,
+    nonPeriodicRepairs: filteredBody.nonPeriodicRepairs,
     generatedPassword: generatedPassword,
   });
 
   const user = await User.create({
-    name: req.body.name,
-    email: req.body.email,
-    phoneNumber: req.body.phoneNumber,
+    name: filteredBody.name,
+    email: filteredBody.email,
+    phoneNumber: filteredBody.phoneNumber,
     password: generatedPassword,
     car: [
       {
         id: newCar._id,
         carCode: newCarCode,
         carNumber: carNumber,
-        brand: req.body.brand,
-        category: req.body.category,
-        model: req.body.model,
+        brand: filteredBody.brand,
+        category: filteredBody.category,
+        model: filteredBody.model,
       },
     ],
-    role: req.body.role,
-    image: req.body.image,
-    imagePublicId: req.body.imagePublicId,
+    role: filteredBody.role,
+    image: filteredBody.image,
+    imagePublicId: filteredBody.imagePublicId,
   });
 
   // 2- Generate token
@@ -228,8 +266,8 @@ export const createUser = asyncHandler(async (req, res, next) => {
   try {
     // 3) Send the reset code via email
     await sendCarCredentials({
-      email: req.body.email,
-      ownerName: req.body.name,
+      email: filteredBody.email,
+      ownerName: filteredBody.name,
       generatedCode: newCarCode,
       generatedPassword,
     });
@@ -244,22 +282,48 @@ export const createUser = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/v1/users/:id
 // @access  Private/Admin
 export const updateUser = asyncHandler(async (req, res, next) => {
-    if(req.body.role){
-      return next(new apiError("can`t change the role of the user",403))
-    }
-    const document = await User.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
+  // Check if body is empty after normalization
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new ApiError('Request body cannot be empty', 400));
+  }
 
-    if (!document) {
-      return next(
-        new apiError(`No document for this id ${req.params.id}`, 404),
-      );
+  // Prevent role modification
+  if (req.body.role) {
+    return next(new ApiError("can't change the role of the user", 403));
+  }
+
+  // Whitelist allowed fields to prevent mass assignment
+  const allowedFields = [
+    'name',
+    'email',
+    'phoneNumber',
+    'phone',
+    'image',
+    'imagePublicId',
+    'active'
+  ];
+
+  // Filter body to only include allowed fields
+  const filteredBody: any = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      filteredBody[field] = req.body[field];
     }
-    // Trigger "save" event when update document
-    document.save({ validateBeforeSave: false });
-    res.status(200).json({ data: document });
+  }
+
+  const document = await User.findByIdAndUpdate(req.params.id, filteredBody, {
+    new: true,
+    runValidators: true,
   });
+
+  if (!document) {
+    return next(
+      new ApiError(`No document for this id ${req.params.id}`, 404),
+    );
+  }
+
+  res.status(200).json({ data: document });
+});
 /*exports.updateUser = asyncHandler(async (req, res, next) => {
   const document = await User.findByIdAndUpdate(
     req.params.id,

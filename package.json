@@ -227,6 +227,7 @@
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
+    "@types/multer": "^2.2.0",
     "mocha": "^10.3.0"
   },
   "scripts": {

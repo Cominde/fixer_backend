@@ -20,6 +20,7 @@ const {
   updateCarImage,
 } = require("../middlewares/uploadImageCloud");
 const { checkPermission } = require("../middlewares/checkPermission");
+const { normalizeBody } = require("../middlewares/normalizeBody");
 
 /**
  * @swagger
@@ -294,7 +295,12 @@ router.route("/getCar/:id").get(checkPermission("cars.view"), getCar);
  *       404:
  *         description: User not found
  */
-router.route("/add/:id").post(checkPermission("cars.add"), addCar);
+router.route("/add/:id").post(
+  checkPermission("cars.add"),
+  uploadSingleImage("image"),
+  normalizeBody(["componentState"]),
+  addCar
+);
 
 /**
  * @swagger
@@ -350,7 +356,12 @@ router.route("/add/:id").post(checkPermission("cars.add"), addCar);
  */
 router
   .route("/update/:id")
-  .put(checkPermission("cars.edit"), updateCar);
+  .put(
+    checkPermission("cars.edit"),
+    uploadSingleImage("image"),
+    normalizeBody(["componentState"]),
+    updateCar
+  );
 
 /**
  * @swagger

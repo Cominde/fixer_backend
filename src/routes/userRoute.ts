@@ -27,6 +27,7 @@ const {
   processUserImage,
   UpdateUserImage,
 } = require("../middlewares/uploadImageCloud");
+const { normalizeBody } = require("../middlewares/normalizeBody");
 
 const authService = require("../services/authService");
 const { saveFCMToken } = require("../services/notificationFire");
@@ -171,7 +172,13 @@ router.put(
 router
   .route("/")
   .get(checkPermission("users.view"), getUsers)
-  .post(checkPermission("users.edit"), uploadSingleImage("image"), processUserImage, createUser);
+  .post(
+    checkPermission("users.edit"),
+    uploadSingleImage("image"),
+    normalizeBody(),
+    processUserImage,
+    createUser
+  );
 
 /**
  * @swagger
@@ -251,6 +258,7 @@ router
   .put(
     checkPermission("users.edit"),
     uploadSingleImage("image"),
+    normalizeBody(),
     UpdateUserImage,
     updateUserValidator,
     updateUser,

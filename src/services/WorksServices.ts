@@ -30,8 +30,33 @@ const generateWorkerPassword = () => {
 // @desc add Worker
 // @Route post /api/v1/Worker
 // @access private
-export const addWorker = asyncHandler(async (req, res) => {
-  const { name, phoneNumber, jobTitle, salary, IdNumber, role } = req.body;
+export const addWorker = asyncHandler(async (req, res, next) => {
+  // Check if body is empty after normalization
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new apiError('Request body cannot be empty', 400));
+  }
+
+  // Whitelist allowed fields to prevent mass assignment
+  const allowedFields = [
+    'name',
+    'phoneNumber',
+    'jobTitle',
+    'salary',
+    'IdNumber',
+    'role',
+    'image',
+    'imagePublicId'
+  ];
+
+  // Filter body to only include allowed fields
+  const filteredBody: any = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      filteredBody[field] = req.body[field];
+    }
+  }
+
+  const { name, phoneNumber, jobTitle, salary, IdNumber, role } = filteredBody;
 
   const generatedPassword = generateWorkerPassword();
 
@@ -180,31 +205,58 @@ export const getSpacificWorker = asyncHandler(async (req, res, next) => {
 // @Route Put /api/v1/Worker
 // @access private
 export const UpdateWorkerDetals = asyncHandler(async (req, res, next) => {
+  // Check if body is empty after normalization
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new apiError('Request body cannot be empty', 400));
+  }
+
+  // Strip image fields (handled separately)
   stripWorkerImageFields(req.body);
-  if (req.body.salary) {
-    if (!req.body.salaryAfterProcces) {
-      req.body.salaryAfterProcces = req.body.salary;
-    }
-    if (!req.body.salaryAfterReword) {
-      req.body.salaryAfterReword = req.body.salary;
+
+  // Whitelist allowed fields to prevent mass assignment
+  const allowedFields = [
+    'name',
+    'phoneNumber',
+    'jobTitle',
+    'salary',
+    'IdNumber',
+    'role',
+    'numberOfRepairs'
+  ];
+
+  // Filter body to only include allowed fields
+  const filteredBody: any = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      filteredBody[field] = req.body[field];
     }
   }
-  const document = await Worker.findByIdAndUpdate(req.params.id, req.body, {
+
+  // Handle salary field updates
+  if (filteredBody.salary) {
+    if (!filteredBody.salaryAfterProcces) {
+      filteredBody.salaryAfterProcces = filteredBody.salary;
+    }
+    if (!filteredBody.salaryAfterReword) {
+      filteredBody.salaryAfterReword = filteredBody.salary;
+    }
+  }
+
+  const document = await Worker.findByIdAndUpdate(req.params.id, filteredBody, {
     new: true,
+    runValidators: true,
   });
 
   if (!document) {
     return next(new apiError(`No document for this id ${req.params.id}`, 404));
   }
-  // Trigger "save" event when update document
-  document.save({ validateBeforeSave: false });
-  
+
   // Remove salary fields from response
   const documentResponse = document.toObject();
   delete documentResponse.salary;
   delete documentResponse.salaryAfterProcces;
   delete documentResponse.salaryAfterReword;
-  
+
   res.status(200).json({ data: documentResponse });
 });
 
@@ -268,10 +320,47 @@ export const getWorkerWithSalaryById = asyncHandler(async (req, res, next) => {
 // @access private
 export const UpdateWorkerDetalsByNID = asyncHandler(async (req, res, next) => {
   const { IdNumber } = req.params;
+
+  // Check if body is empty after normalization
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new apiError('Request body cannot be empty', 400));
+  }
+
+  // Strip image fields (handled separately)
   stripWorkerImageFields(req.body);
 
-  const worker = await Worker.findOneAndUpdate({ IdNumber }, req.body, {
+  // Whitelist allowed fields to prevent mass assignment
+  const allowedFields = [
+    'name',
+    'phoneNumber',
+    'jobTitle',
+    'salary',
+    'IdNumber',
+    'role',
+    'numberOfRepairs'
+  ];
+
+  // Filter body to only include allowed fields
+  const filteredBody: any = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      filteredBody[field] = req.body[field];
+    }
+  }
+
+  // Handle salary field updates
+  if (filteredBody.salary) {
+    if (!filteredBody.salaryAfterProcces) {
+      filteredBody.salaryAfterProcces = filteredBody.salary;
+    }
+    if (!filteredBody.salaryAfterReword) {
+      filteredBody.salaryAfterReword = filteredBody.salary;
+    }
+  }
+
+  const worker = await Worker.findOneAndUpdate({ IdNumber }, filteredBody, {
     new: true,
+    runValidators: true,
   });
 
   if (!worker) {

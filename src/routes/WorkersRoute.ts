@@ -28,6 +28,7 @@ const {
 const { checkPermission } = require("../middlewares/checkPermission");
 const { uploadSingleImage } = require("../middlewares/uploadImageMiddleware");
 const { processWorkerImage } = require("../middlewares/uploadImageCloud");
+const { normalizeBody } = require("../middlewares/normalizeBody");
 
 /**
  * @swagger
@@ -96,7 +97,13 @@ const { processWorkerImage } = require("../middlewares/uploadImageCloud");
  *       400:
  *         description: Validation error - invalid phone number
  */
-router.route("/").get(checkPermission("workers.view"), getAllWorkers).post(checkPermission("workers.add"), addWorkerValidator, addWorker);
+router.route("/").get(checkPermission("workers.view"), getAllWorkers).post(
+  checkPermission("workers.add"),
+  uploadSingleImage("image"),
+  normalizeBody(),
+  addWorkerValidator,
+  addWorker
+);
 
 /**
  * @swagger
@@ -314,7 +321,12 @@ router.route("/search/:searchString").get(checkPermission("workers.view"), searc
  *       404:
  *         description: Worker not found
  */
-router.route("/withoutNID/:id").put(checkPermission("workers.edit"), UpdateWorkerDetals);
+router.route("/withoutNID/:id").put(
+  checkPermission("workers.edit"),
+  uploadSingleImage("image"),
+  normalizeBody(),
+  UpdateWorkerDetals
+);
 /**
  * @swagger
  * /Worker/reset-salary:
@@ -370,7 +382,12 @@ router.route("/reset-salary").post(checkPermission("workers.salary.edit"), reset
  *       404:
  *         description: Worker not found
  */
-router.route("/:IdNumber").put(checkPermission("workers.edit"), UpdateWorkerDetalsByNID);
+router.route("/:IdNumber").put(
+  checkPermission("workers.edit"),
+  uploadSingleImage("image"),
+  normalizeBody(),
+  UpdateWorkerDetalsByNID
+);
 
 
 

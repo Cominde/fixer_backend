@@ -17,6 +17,8 @@ const {
 } = require("../services/repairingService");
 
 const { checkPermission } = require("../middlewares/checkPermission");
+const { uploadSingleImage } = require("../middlewares/uploadImageMiddleware");
+const { normalizeBody } = require("../middlewares/normalizeBody");
 
 /**
  * @swagger
@@ -146,7 +148,12 @@ const { checkPermission } = require("../middlewares/checkPermission");
  *       400:
  *         description: Validation error
  */
-router.route("/").post(checkPermission("repairs.add"), createRepairing).get(checkPermission("repairs.view"), getAllComRepairs);
+router.route("/").post(
+  checkPermission("repairs.add"),
+  uploadSingleImage("image"),
+  normalizeBody(["components", "services", "additions", "technicians"]),
+  createRepairing
+).get(checkPermission("repairs.view"), getAllComRepairs);
 
 /**
  * @swagger
@@ -236,7 +243,12 @@ router.route("/").post(checkPermission("repairs.add"), createRepairing).get(chec
  *       400:
  *         description: Validation error
  */
-router.route("/walkIn").post(checkPermission("repairs.add"), walkInRepair);
+router.route("/walkIn").post(
+  checkPermission("repairs.add"),
+  uploadSingleImage("image"),
+  normalizeBody(["components", "services", "additions", "technicians"]),
+  walkInRepair
+);
 
 /**
  * @swagger
@@ -338,7 +350,12 @@ router.route("/getById/:id").get(getCarRepairsByid);
  *       404:
  *         description: Repair not found
  */
-router.route("/update/:id").put(checkPermission("repairs.edit"), updateRepair);
+router.route("/update/:id").put(
+  checkPermission("repairs.edit"),
+  uploadSingleImage("image"),
+  normalizeBody(["components", "services", "additions", "technicians"]),
+  updateRepair
+);
 
 /**
  * @swagger

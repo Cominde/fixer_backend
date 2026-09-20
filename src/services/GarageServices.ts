@@ -20,7 +20,41 @@ const openai = require('openai');
 // @access  Private
 export const addCar = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-  const carNumber = normalizeCarNumber(req.body.carNumber);
+
+  // Check if body is empty after normalization
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new apiError('Request body cannot be empty', 400));
+  }
+
+  // Whitelist allowed fields to prevent mass assignment
+  const allowedFields = [
+    'carNumber',
+    'chassisNumber',
+    'color',
+    'brand',
+    'category',
+    'model',
+    'nextRepairDate',
+    'lastRepairDate',
+    'periodicRepairs',
+    'nonPeriodicRepairs',
+    'distances',
+    'motorNumber',
+    'clientType',
+    'manually',
+    'carCode',
+    'componentState'
+  ];
+
+  // Filter body to only include allowed fields
+  const filteredBody: any = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      filteredBody[field] = req.body[field];
+    }
+  }
+
+  const carNumber = normalizeCarNumber(filteredBody.carNumber);
   const {
     chassisNumber,
     color,
@@ -35,7 +69,7 @@ export const addCar = asyncHandler(async (req, res, next) => {
     motorNumber,
     clientType,
     manually,
-  } = req.body;
+  } = filteredBody;
 
   // Check duplicate carNumber
   const existingCar = await Car.findOne({ carNumber });
@@ -84,7 +118,7 @@ export const addCar = asyncHandler(async (req, res, next) => {
 
   let newCarCode;
   if (manually === "True" || manually === "true") {
-    const carCode = req.body.carCode;
+    const carCode = filteredBody.carCode;
     const parsedCarCode = parseInt(carCode, 10);
     if (isNaN(parsedCarCode) || !Number.isInteger(parsedCarCode)) {
       return next(new apiError(`Invalid carCode. It must be a number.`, 400));
@@ -144,7 +178,7 @@ export const addCar = asyncHandler(async (req, res, next) => {
   const newCar = await Car.create({
     ownerName: user.name,
     carNumber,
-    chassisNumber: req.body.chassisNumber,
+    chassisNumber: filteredBody.chassisNumber,
     color,
     brand,
     category,
@@ -153,7 +187,7 @@ export const addCar = asyncHandler(async (req, res, next) => {
     lastRepairDate,
     periodicRepairs,
     nonPeriodicRepairs,
-    componentState: req.body.componentState,
+    componentState: filteredBody.componentState,
     distances,
     motorNumber,
     generatedCode: newCarCode,
@@ -403,30 +437,61 @@ export const makeCarInRepair = asyncHandler(async (req, res, next) => {
 // @desc    Update specific car
 // @route   PUT /api/v1/Garage/:id
 // @access  Private
-export const updateCar =   asyncHandler(async (req, res, next) => {
-  if(req.body.distances){
-    console.log(req.body.distances)
-    const document = await Car.findByIdAndUpdate(req.params.id, {distances:req.body.distances},
-       {new: true});
+export const updateCar = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
 
-    if (!document) {
-        return next(
-        new apiError(`No document for this id ${req.params.id}`, 404),
-      );
-    }
-    res.status(200).json({ data: document });   
+  // Check if body is empty after normalization
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new apiError('Request body cannot be empty', 400));
   }
-  const document = await Car.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+
+  // Whitelist allowed fields to prevent mass assignment
+  const allowedFields = [
+    'carNumber',
+    'chassisNumber',
+    'color',
+    'State',
+    'brand',
+    'category',
+    'model',
+    'nextRepairDate',
+    'lastRepairDate',
+    'periodicRepairs',
+    'nonPeriodicRepairs',
+    'componentState',
+    'distances',
+    'motorNumber',
+    'nextRepairDistance',
+    'completedServicesRatio',
+    'ownerName',
+    'image',
+    'imagePublicId'
+  ];
+
+  // Filter body to only include allowed fields
+  const filteredBody: any = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      filteredBody[field] = req.body[field];
+    }
+  }
+
+  // Normalize car number if provided
+  if (filteredBody.carNumber) {
+    filteredBody.carNumber = normalizeCarNumber(filteredBody.carNumber);
+  }
+
+  const document = await Car.findByIdAndUpdate(id, filteredBody, {
+    new: true,
+    runValidators: true,
   });
 
   if (!document) {
-      return next(
-        new apiError(`No document for this id ${req.params.id}`, 404),
-      );
+    return next(new apiError(`No document for this id ${id}`, 404));
   }
+
   res.status(200).json({ data: document });
-  });
+});
 
 // @desc    Search for all cars
 // @route   GET /api/v1/Garage/search/:searchString
