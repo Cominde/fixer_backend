@@ -404,9 +404,12 @@ export const makeCarInRepair = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/v1/Garage/:id
 // @access  Private
 export const updateCar =   asyncHandler(async (req, res, next) => {
-  console.log(req.body)
+  console.log("Update Car Request Body:", JSON.stringify(req.body, null, 2));
+  console.log("Update Car Params ID:", req.params.id);
+  
   const document = await Car.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
+      runValidators: true,
   });
 
   if (!document) {
@@ -414,7 +417,8 @@ export const updateCar =   asyncHandler(async (req, res, next) => {
         new apiError(`No document for this id ${req.params.id}`, 404),
       );
   }
-  document.save({ validateBeforeSave: false });
+  
+  console.log("Updated Document:", JSON.stringify(document, null, 2));
   res.status(200).json({ data: document });
   });
 

@@ -328,6 +328,20 @@ router.route("/add/:id").post(checkPermission("cars.add"), addCar);
  *                 type: string
  *               model:
  *                 type: string
+ *               distances:
+ *                 type: number
+ *                 example: 130502
+ *               nextRepairDistance:
+ *                 type: number
+ *                 example: 140000
+ *               nextRepairDate:
+ *                 type: string
+ *                 format: date
+ *                 example: "2026-10-20"
+ *               State:
+ *                 type: string
+ *                 enum: ["Repair", "Good", "Need to check", "Done"]
+ *                 example: "Good"
  *     responses:
  *       200:
  *         description: Car updated successfully
