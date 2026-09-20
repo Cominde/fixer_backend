@@ -403,15 +403,20 @@ export const makeCarInRepair = asyncHandler(async (req, res, next) => {
 // @desc    Update specific car
 // @route   PUT /api/v1/Garage/:id
 // @access  Private
-export const updateCar = [
-  (req, res, next) => {
-    if (req.body.carNumber) {
-      req.body.carNumber = normalizeCarNumber(req.body.carNumber);
-    }
-    next();
-  },
-  factory.updateOne(Car),
-];
+export const updateCar =   asyncHandler(async (req, res, next) => {
+  console.log(req.body)
+  const document = await Car.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+  });
+
+  if (!document) {
+      return next(
+        new apiError(`No document for this id ${req.params.id}`, 404),
+      );
+  }
+  document.save({ validateBeforeSave: false });
+  res.status(200).json({ data: document });
+  });
 
 // @desc    Search for all cars
 // @route   GET /api/v1/Garage/search/:searchString
