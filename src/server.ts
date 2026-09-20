@@ -126,7 +126,6 @@ const authLimiter = rateLimit({
 app.use(globalLimiter);
 // middlewaers
 app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 // eslint-disable-next-line eqeqeq
 if (process.env.NODE_ENV == "development") {
   app.use(morgan("dev"));
