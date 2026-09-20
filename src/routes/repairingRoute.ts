@@ -18,7 +18,7 @@ const {
 
 const { checkPermission } = require("../middlewares/checkPermission");
 const { uploadSingleImage } = require("../middlewares/uploadImageMiddleware");
-const { normalizeBody } = require("../middlewares/normalizeBody");
+const  normalizeBody  = require("../middlewares/normalizeBody");
 
 /**
  * @swagger

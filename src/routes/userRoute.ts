@@ -27,7 +27,7 @@ const {
   processUserImage,
   UpdateUserImage,
 } = require("../middlewares/uploadImageCloud");
-const { normalizeBody } = require("../middlewares/normalizeBody");
+const  normalizeBody  = require("../middlewares/normalizeBody");
 
 const authService = require("../services/authService");
 const { saveFCMToken } = require("../services/notificationFire");

@@ -20,7 +20,7 @@ const {
   updateCarImage,
 } = require("../middlewares/uploadImageCloud");
 const { checkPermission } = require("../middlewares/checkPermission");
-const { normalizeBody } = require("../middlewares/normalizeBody");
+const  normalizeBody = require("../middlewares/normalizeBody");
 
 /**
  * @swagger

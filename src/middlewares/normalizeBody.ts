@@ -56,4 +56,4 @@ const normalizeBody = (jsonFields = []) => {
   };
 };
 
-export = normalizeBody;
+module.exports = normalizeBody;
