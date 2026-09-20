@@ -404,8 +404,12 @@ export const makeCarInRepair = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/v1/Garage/:id
 // @access  Private
 export const updateCar =   asyncHandler(async (req, res, next) => {
+  console.log("=== UPDATE CAR DEBUG ===");
+  console.log("Content-Type:", req.get('Content-Type'));
+  console.log("Request Headers:", JSON.stringify(req.headers, null, 2));
   console.log("Update Car Request Body:", JSON.stringify(req.body, null, 2));
   console.log("Update Car Params ID:", req.params.id);
+  console.log("Raw Request (if available):", req);
   
   const document = await Car.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
@@ -419,6 +423,7 @@ export const updateCar =   asyncHandler(async (req, res, next) => {
   }
   
   console.log("Updated Document:", JSON.stringify(document, null, 2));
+  console.log("=== END UPDATE CAR DEBUG ===");
   res.status(200).json({ data: document });
   });
 
