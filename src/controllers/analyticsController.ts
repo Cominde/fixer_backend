@@ -359,6 +359,7 @@ export const getMonthlyOverview = asyncHandler(async (req, res, next) => {
           {
             $project: {
               carId: 1,
+              generatedCode: 1,
               complete: 1,
               completedAt: 1,
               priceAfterDiscount: 1
@@ -368,7 +369,12 @@ export const getMonthlyOverview = asyncHandler(async (req, res, next) => {
             $addFields: {
               clientType: {
                 $cond: [
-                  { $eq: ["$carId", null] },
+                  {
+                    $and: [
+                      { $eq: [{ $ifNull: ["$carId", null] }, null] },
+                      { $eq: [{ $ifNull: ["$generatedCode", null] }, null] }
+                    ]
+                  },
                   "walkIn",
                   "registered"
                 ]
@@ -397,7 +403,8 @@ export const getMonthlyOverview = asyncHandler(async (req, res, next) => {
           {
             $match: {
               createdAt: { $gte: startDate, $lte: endDate },
-              complete: true
+              complete: true,
+              completedAt: { $ne: null }
             }
           },
           {

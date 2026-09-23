@@ -643,7 +643,7 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
     component: repairDetails,
     Services: normalizedServices,
     additions: normalizedAdditions,
-    carNumber: carNumber,
+    carNumber: normalizedCarNumber,
     type: type || "periodic",
     totalPrice,
     discount: discountAmount,
