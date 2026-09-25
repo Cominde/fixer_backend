@@ -16,23 +16,15 @@ const connectDB = async () => {
 // Get worker productivity script (completed repairs only)
 const getWorkerProductivity = async (startDate, endDate) => {
   try {
-    // If no dates provided, use current month (from 1st to today)
+    // If no dates provided, use current month
     const now = new Date();
     const start = startDate ? new Date(startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = endDate ? new Date(endDate) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const end = endDate ? new Date(endDate) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
     console.log(`📊 Worker Productivity Report (Completed Repairs)`);
     console.log(`📅 Period: ${start.toISOString()} to ${end.toISOString()}`);
     console.log(`🔍 Criteria: complete=true AND completedAt IS NOT NULL`);
     console.log(`\n`);
-    
-    // First, let's verify the total count of completed repairs in the database
-    const totalCompletedInDB = await Repairing.countDocuments({
-      createdAt: { $gte: start, $lte: end },
-      complete: true,
-      completedAt: { $ne: null }
-    });
-    console.log(`🔍 Database verification: Total completed repairs in period: ${totalCompletedInDB}`);
 
     const workerProductivity = await Repairing.aggregate([
       {
@@ -45,7 +37,7 @@ const getWorkerProductivity = async (startDate, endDate) => {
       {
         $unwind: {
           path: "$technicians",
-          preserveNullAndEmptyArrays: false
+          preserveNullAndEmptyArrays: true
         }
       },
       {
@@ -54,8 +46,7 @@ const getWorkerProductivity = async (startDate, endDate) => {
             workerId: "$technicians.workerId",
             workerName: "$technicians.name"
           },
-          completedRepairs: { $sum: 1 },
-          repairIds: { $addToSet: "$_id" }
+          completedRepairs: { $sum: 1 }
         }
       },
       {
@@ -63,8 +54,7 @@ const getWorkerProductivity = async (startDate, endDate) => {
           _id: 0,
           workerId: "$_id.workerId",
           workerName: { $ifNull: ["$_id.workerName", "Unknown Worker"] },
-          completedRepairs: 1,
-          uniqueRepairs: { $size: "$repairIds" }
+          completedRepairs: 1
         }
       },
       {
@@ -80,18 +70,13 @@ const getWorkerProductivity = async (startDate, endDate) => {
       
       let totalRepairs = 0;
       workerProductivity.forEach((worker, index) => {
-        totalRepairs += worker.uniqueRepairs;
+        totalRepairs += worker.completedRepairs;
         console.log(`${index + 1}. ${worker.workerName} (ID: ${worker.workerId})`);
-        console.log(`   ✅ Completed Repairs: ${worker.uniqueRepairs}`);
+        console.log(`   ✅ Completed Repairs: ${worker.completedRepairs}`);
         console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       });
 
-      console.log(`\n📊 Total Completed Repairs (unique): ${totalCompletedInDB}`);
-      console.log(`📊 Total Technician Assignments: ${totalRepairs}`);
-      
-      if (totalRepairs !== totalCompletedInDB) {
-        console.log(`⚠️  Note: Some repairs have multiple technicians, so total assignments (${totalRepairs}) > unique repairs (${totalCompletedInDB})`);
-      }
+      console.log(`\n📊 Total Completed Repairs: ${totalRepairs}`);
       console.log(`👷‍♂️ Total Workers: ${workerProductivity.length}`);
     }
 
@@ -221,6 +206,7 @@ const main = async () => {
   const endDate = args[2];     // Optional: YYYY-MM-DD format
 
   await connectDB();
+  console.log(`start date ${startDate} , endDate ${endDate}`)
   await getWorkerProductivity(startDate, endDate);
   // if (reportType === "all") {
   //   await getAllWorkerRepairs(startDate, endDate);

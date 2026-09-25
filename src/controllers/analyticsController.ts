@@ -419,8 +419,7 @@ export const getMonthlyOverview = asyncHandler(async (req, res, next) => {
                 workerId: "$technicians.workerId",
                 workerName: "$technicians.name"
               },
-              completedRepairs: { $sum: 1 },
-              repairIds: { $addToSet: "$_id" }
+              completedRepairs: { $sum: 1 }
             }
           },
           {
@@ -428,8 +427,7 @@ export const getMonthlyOverview = asyncHandler(async (req, res, next) => {
               _id: 0,
               workerId: "$_id.workerId",
               workerName: { $ifNull: ["$_id.workerName", "Unknown Worker"] },
-              completedRepairs: 1,
-              uniqueRepairs: { $size: "$repairIds" }
+              completedRepairs: 1
             }
           },
           {
@@ -605,11 +603,7 @@ export const getMonthlyOverview = asyncHandler(async (req, res, next) => {
       dailyTrend: completeDailyTrend,
       statusBreakdown,
       clientDistribution,
-      workerProductivity: result.workerProductivity.map(worker => ({
-        workerId: worker.workerId,
-        workerName: worker.workerName,
-        completedRepairs: worker.uniqueRepairs
-      })),
+      workerProductivity: result.workerProductivity,
       periodicVsNonPeriodic
     }
   };

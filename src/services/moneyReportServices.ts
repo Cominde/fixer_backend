@@ -503,25 +503,80 @@ export const getOrganizationReport = asyncHandler(async (req, res, next) => {
   const toDate = new Date(to);
   toDate.setHours(23, 59, 59, 999);
 
+  // Get today's date for worker repairs (request day only)
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+
   // Get all workers (technicians)
   const workers = await Worker.find({}).select("name jobTitle salaryAfterProcces");
 
-  // Count repairs per worker within the date range using technicians array
-  const workersWithRepairCount = await Promise.all(
-    workers.map(async (worker) => {
-      const repairCount = await Repair.countDocuments({
-        technicians: { $elemMatch: { workerId: worker._id } },
-        createdAt: { $gte: fromDate, $lte: toDate },
-      });
-      return {
-        _id: worker._id,
-        name: worker.name,
-        jobTitle: worker.jobTitle,
-        repairCount: repairCount,
-        repairLabel: `${repairCount} repairs`,
-      };
-    })
-  );
+  // Get worker repairs for today only
+  const todayWorkerRepairs = await Repair.aggregate([
+    {
+      $match: {
+        createdAt: { $gte: todayStart, $lte: todayEnd }
+      }
+    },
+    {
+      $unwind: "$technicians"
+    },
+    {
+      $group: {
+        _id: "$technicians.workerId",
+        totalRepairs: { $sum: 1 },
+        completedRepairs: {
+          $sum: {
+            $cond: [{ $eq: ["$complete", true] }, 1, 0]
+          }
+        },
+        incompleteRepairs: {
+          $sum: {
+            $cond: [{ $eq: ["$complete", false] }, 1, 0]
+          }
+        }
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        workerId: "$_id",
+        totalRepairs: 1,
+        completedRepairs: 1,
+        incompleteRepairs: 1
+      }
+    }
+  ]);
+
+  // Add worker names to today's data
+  const todayWorkerRepairsWithNames = todayWorkerRepairs.map(worker => {
+    const workerInfo = workers.find(w => w._id.toString() === worker.workerId.toString());
+    return {
+      workerId: worker.workerId,
+      workerName: workerInfo?.name || "Unknown Worker",
+      totalRepairs: worker.totalRepairs,
+      completedRepairs: worker.completedRepairs,
+      incompleteRepairs: worker.incompleteRepairs
+    };
+  });
+
+  // // Count repairs per worker within the date range using technicians array
+  // const workersWithRepairCount = await Promise.all(
+  //   workers.map(async (worker) => {
+  //     const repairCount = await Repair.countDocuments({
+  //       technicians: { $elemMatch: { workerId: worker._id } },
+  //       createdAt: { $gte: fromDate, $lte: toDate },
+  //       complete: true, // Only count completed repairs to match analytics API
+  //     });
+  //     return {
+  //       _id: worker._id,
+  //       name: worker.name,
+  //       jobTitle: worker.jobTitle,
+  //       repairCount: repairCount,
+  //       repairLabel: `${repairCount} repairs`,
+  //     };
+  //   })
+  // );
 
   // Get low stock inventory items
   const inventoryItems = await Inventory.find({});
@@ -568,7 +623,8 @@ export const getOrganizationReport = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     data: {
       range: { from, to },
-      technicians: workersWithRepairCount,
+      technicians: todayWorkerRepairsWithNames,
+      //todayWorkerRepairs: todayWorkerRepairsWithNames,
       lowStock: lowStockItems,
       income: totalIncome,
       totalGain: totalGain,
