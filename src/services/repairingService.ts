@@ -136,12 +136,10 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
       // Use nextRepairDistance and nextRepairDate from the last periodic repair
       nextDistance = lastPeriodicRepair.nextRepairDistance || 0;
       nextRDate = lastPeriodicRepair.nextRepairDate;
-      finalDistance = lastPeriodicRepair.distance || 0;
     } else {
       // No periodic repair found, set to default values
       nextDistance = 0;
       nextRDate = undefined;
-      finalDistance = 0;
     }
   }
   if (filteredBody.manually == "True" || filteredBody.manually == true) {

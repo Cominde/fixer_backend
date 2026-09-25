@@ -404,13 +404,13 @@ export const getMonthlyOverview = asyncHandler(async (req, res, next) => {
             $match: {
               createdAt: { $gte: startDate, $lte: endDate },
               complete: true,
-              completedAt: { $ne: null }
+              //completedAt: { $ne: null }
             }
           },
           {
             $unwind: {
               path: "$technicians",
-              preserveNullAndEmptyArrays: true
+              preserveNullAndEmptyArrays: false
             }
           },
           {
@@ -419,7 +419,8 @@ export const getMonthlyOverview = asyncHandler(async (req, res, next) => {
                 workerId: "$technicians.workerId",
                 workerName: "$technicians.name"
               },
-              completedRepairs: { $sum: 1 }
+              completedRepairs: { $sum: 1 },
+              repairIds: { $addToSet: "$_id" }
             }
           },
           {
@@ -427,7 +428,8 @@ export const getMonthlyOverview = asyncHandler(async (req, res, next) => {
               _id: 0,
               workerId: "$_id.workerId",
               workerName: { $ifNull: ["$_id.workerName", "Unknown Worker"] },
-              completedRepairs: 1
+              completedRepairs: 1,
+              uniqueRepairs: { $size: "$repairIds" }
             }
           },
           {
@@ -603,7 +605,11 @@ export const getMonthlyOverview = asyncHandler(async (req, res, next) => {
       dailyTrend: completeDailyTrend,
       statusBreakdown,
       clientDistribution,
-      workerProductivity: result.workerProductivity,
+      workerProductivity: result.workerProductivity.map(worker => ({
+        workerId: worker.workerId,
+        workerName: worker.workerName,
+        completedRepairs: worker.uniqueRepairs
+      })),
       periodicVsNonPeriodic
     }
   };
