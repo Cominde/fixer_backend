@@ -1547,7 +1547,7 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
   if (req.body.distance !== undefined && req.body.distance !== "") {
     const car_distance = await Car.findByIdAndUpdate(
       repair.carId,
-      { distance : req.body.distance },
+      { distances : req.body.distance },
       { new: true },
     );
     repair.distance = req.body.distance;
