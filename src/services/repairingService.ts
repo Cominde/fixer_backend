@@ -31,6 +31,12 @@ const toMoney = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/** Round to 2 decimal places — only for final monetary results. */
+const round2 = (value) => {
+  const n = toMoney(value);
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+};
+
 const sumRepairLineTotals = (repair) => {
   let total = 0;
   for (const line of repair.Services || []) total += toMoney(line.price);
@@ -43,7 +49,8 @@ const applyRepairTotals = (repair) => {
   const totalPrice = sumRepairLineTotals(repair);
   const discount = toMoney(repair.discount);
   repair.totalPrice = totalPrice;
-  repair.priceAfterDiscount = totalPrice - discount;
+  // Single source of truth: round2(subtotal − discount). Do not round discount alone.
+  repair.priceAfterDiscount = round2(totalPrice - discount);
   return { totalPrice, priceAfterDiscount: repair.priceAfterDiscount };
 };
 
@@ -311,7 +318,7 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
   const completedServicesRatio =
     totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
   const discountAmount = toMoney(discount);
-  const priceAfterDiscount = totalPrice - discountAmount;
+  const priceAfterDiscount = round2(totalPrice - discountAmount);
 
   let state = "";
 
@@ -612,7 +619,7 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
   const completedServicesRatio =
     totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
   const discountAmount = toMoney(discount);
-  const priceAfterDiscount = totalPrice - discountAmount;
+  const priceAfterDiscount = round2(totalPrice - discountAmount);
 
   const expectedDate = new Date();
   if(Number(daysItTake) > 0){

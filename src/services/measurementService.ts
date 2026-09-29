@@ -7,6 +7,16 @@ const apiError = require("../utils/apiError");
 const asyncHandler = require("express-async-handler");
 const ApiFeatures = require("../utils/apiFeatures");
 
+const toMoney = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const round2 = (value) => {
+  const n = toMoney(value);
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+};
+
 // @desc    Create a new measurement
 // @Route   POST /api/v1/measurement
 // @access  Private
@@ -119,7 +129,7 @@ export const createMeasurement = asyncHandler(async (req, res, next) => {
 
   const completedServicesRatio =
     totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
-  const priceAfterDiscount = totalPrice - discount;
+  const priceAfterDiscount = round2(toMoney(totalPrice) - toMoney(discount));
 
   const expectedDate = new Date();
   expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
@@ -284,7 +294,7 @@ export const walkInMeasurement = asyncHandler(async (req, res, next) => {
 
   const completedServicesRatio =
     totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
-  const priceAfterDiscount = totalPrice - discount;
+  const priceAfterDiscount = round2(toMoney(totalPrice) - toMoney(discount));
 
   const expectedDate = new Date();
   expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
