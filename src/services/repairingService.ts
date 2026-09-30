@@ -54,6 +54,73 @@ const applyRepairTotals = (repair) => {
   return { totalPrice, priceAfterDiscount: repair.priceAfterDiscount };
 };
 
+/**
+ * Serialise writes to the same repair inside this process, so two service
+ * ticks arriving together cannot overwrite each other's completion result.
+ */
+const repairLocks = new Map();
+const withRepairLock = async (repairId, fn) => {
+  const key = String(repairId);
+  const run = (repairLocks.get(key) || Promise.resolve()).then(fn);
+  const tail = run.catch(() => {});
+  repairLocks.set(key, tail);
+  try {
+    return await run;
+  } finally {
+    if (repairLocks.get(key) === tail) repairLocks.delete(key);
+  }
+};
+
+/**
+ * Mirror a repair's completion onto its car (State, repairing flag, ratio).
+ * The car stays in the garage while it has any other open repair.
+ * Returns false when the car does not exist.
+ */
+const syncCarWithRepair = async (repair, nextRepairDate?) => {
+  const car = await Car.findById(repair.carId).select("nextRepairDate");
+  if (!car) return false;
+
+  let openRepair = repair.complete ? null : repair;
+  if (!openRepair) {
+    openRepair = await Repairing.findOne({
+      carId: repair.carId,
+      complete: false,
+      _id: { $ne: repair._id },
+    }).select("_id completedServicesRatio");
+  }
+
+  if (openRepair) {
+    await Car.updateOne(
+      { _id: repair.carId },
+      {
+        $set: {
+          State: "Repair",
+          repairing: true,
+          repairing_id: openRepair._id,
+          completedServicesRatio: openRepair.completedServicesRatio,
+        },
+      },
+    );
+    return true;
+  }
+
+  const now = new Date();
+  const next = nextRepairDate || car.nextRepairDate;
+  await Car.updateOne(
+    { _id: repair.carId },
+    {
+      $set: {
+        State: next && now >= new Date(next) ? "Need to check" : "Good",
+        repairing: false,
+        completedServicesRatio: repair.completedServicesRatio,
+        lastRepairDate: now,
+      },
+      $unset: { repairing_id: "" },
+    },
+  );
+  return true;
+};
+
 async function resolveReceptionForRequest(req) {
   if (hasReceptionInput(req.body)) {
     return resolveReceptionEngineer(req.body);
@@ -814,9 +881,19 @@ export const updateServiceStateById = asyncHandler(async (req, res, next) => {
   const { serviceId } = req.params;
   const { newState } = req.body;
 
-  const repairingDoc = await Repairing.findOne({ "Services._id": serviceId });
+  if (!ObjectId.isValid(serviceId)) {
+    return next(new apiError(`Invalid service id ${serviceId}`, 400));
+  }
+  if (newState !== "repairing" && newState !== "completed") {
+    return next(
+      new apiError(`newState must be "repairing" or "completed"`, 400),
+    );
+  }
 
-  if (!repairingDoc) {
+  const owner = await Repairing.findOne({ "Services._id": serviceId }).select(
+    "_id",
+  );
+  if (!owner) {
     return next(
       new apiError(
         `Service with ID ${serviceId} not found in any repairing document`,
@@ -825,9 +902,74 @@ export const updateServiceStateById = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const service = repairingDoc.Services.find((s) => s._id.equals(serviceId));
+  const repairingDoc = await withRepairLock(owner._id, async () => {
+    const svcId = new ObjectId(serviceId);
+    // Set the state and recompute ratio/complete from the stored array in one
+    // atomic update, so concurrent ticks never count from a stale copy.
+    const doc = await Repairing.findOneAndUpdate(
+      { _id: owner._id, "Services._id": svcId },
+      [
+        {
+          $set: {
+            Services: {
+              $map: {
+                input: "$Services",
+                as: "s",
+                in: {
+                  $cond: [
+                    { $eq: ["$$s._id", svcId] },
+                    { $mergeObjects: ["$$s", { state: newState }] },
+                    "$$s",
+                  ],
+                },
+              },
+            },
+          },
+        },
+        {
+          $set: {
+            _done: {
+              $size: {
+                $filter: {
+                  input: "$Services",
+                  as: "s",
+                  cond: { $eq: ["$$s.state", "completed"] },
+                },
+              },
+            },
+            _total: { $size: "$Services" },
+          },
+        },
+        {
+          $set: {
+            completedServicesRatio: {
+              $cond: [
+                { $gt: ["$_total", 0] },
+                { $divide: ["$_done", "$_total"] },
+                0,
+              ],
+            },
+            complete: { $eq: ["$_done", "$_total"] },
+            updatedAt: "$$NOW",
+          },
+        },
+        {
+          // Same transitions as the pre-save hook (not run for updates).
+          $set: {
+            completedAt: {
+              $cond: ["$complete", { $ifNull: ["$completedAt", "$$NOW"] }, null],
+            },
+          },
+        },
+        { $unset: ["_done", "_total"] },
+      ],
+      { new: true },
+    );
+    if (doc) await syncCarWithRepair(doc);
+    return doc;
+  });
 
-  if (!service) {
+  if (!repairingDoc) {
     return next(
       new apiError(
         `Service with ID ${serviceId} not found within any repairing document`,
@@ -836,53 +978,7 @@ export const updateServiceStateById = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Update service state
-  service.state = newState;
-
-  // Update completed services count and ratio
-  const totalServicesCount = repairingDoc.Services.length;
-  const completedServices = repairingDoc.Services.filter(
-    (s) => s.state === "completed",
-  ).length;
-
-  repairingDoc.completedServicesRatio =
-    totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
-
-  // Update repair completion status
-  repairingDoc.complete = completedServices === totalServicesCount;
-
-  // Save the parent document (repairingDoc) to persist subdocument changes
-  await repairingDoc.save();
-
-  // Update car data if all services are completed
-  let car = await Car.findById(repairingDoc.carId);
-
-  if (car) {
-    if (repairingDoc.complete) {
-      const currentDate = new Date();
-      car.lastRepairDate = currentDate;
-
-      if (car.nextRepairDate) {
-        const parsedNextPerDate = new Date(car.nextRepairDate);
-        if (currentDate < parsedNextPerDate) {
-          car.State = "Good";
-        } else {
-          car.State = "Need to check";
-        }
-      } else {
-        car.State = "Good";
-      }
-    } else {
-      car.State = "Repair";
-      car.repairing = true;
-      car.repairing_id = repairingDoc._id;
-    }
-
-    car.completedServicesRatio = repairingDoc.completedServicesRatio;
-
-    // Save the car document
-    await car.save();
-  }
+  const service = repairingDoc.Services.find((s) => s._id.equals(serviceId));
   res.status(200).json({
     data: service,
     message: `Service state updated to ${newState}`,
@@ -1152,7 +1248,7 @@ export const suggestNextCodeNumber = asyncHandler(async (req, res, next) => {
 // @desc upadete repair car
 // @Route PUT /api/v1/repair/update/:id
 // @access private
-export const updateRepair = asyncHandler(async (req, res, next) => {
+const updateRepairHandler = async (req, res, next) => {
   // Check if body is empty after normalization
   if (!req.body || Object.keys(req.body).length === 0) {
     return next(new apiError('Request body cannot be empty', 400));
@@ -1355,29 +1451,9 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
     repair.complete = newComplete;
     repair.completedServicesRatio = completedServicesRatio;
 
-    const currentDate = new Date();
-    let state = "";
+    const carFound = await syncCarWithRepair(repair, repair.nextRepairDate);
 
-    if (!newComplete) {
-      state = "Repair";
-    } else if (
-      repair.nextRepairDate &&
-      currentDate < new Date(repair.nextRepairDate)
-    ) {
-      state = "Good";
-    } else if (repair.nextRepairDate) {
-      state = "Need to check";
-    } else {
-      state = "Good";
-    }
-
-    const car_state = await Car.findByIdAndUpdate(
-      repair.carId,
-      { State: state },
-      { new: true },
-    );
-
-    if (!car_state) {
+    if (!carFound) {
       return next(
         new apiError(`No car for this number ${repair.carNumber}`, 404),
       );
@@ -1578,7 +1654,12 @@ export const updateRepair = asyncHandler(async (req, res, next) => {
   await repair.save();
 
   res.status(200).json({ data: repair });
-});
+};
+
+// Shares the per-repair lock with updateServiceStateById.
+export const updateRepair = asyncHandler((req, res, next) =>
+  withRepairLock(req.params.id, () => updateRepairHandler(req, res, next)),
+);
 
 /*
 
