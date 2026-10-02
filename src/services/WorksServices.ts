@@ -1,6 +1,6 @@
 const Worker = require("../models/Worker");
 //const slugify = require("slugify");
-  const Repairing = require("../models/repairingModel");
+const Repairing = require("../models/repairingModel");
 const asyncHandler = require("express-async-handler");
 const apiError = require("../utils/apiError");
 const moment = require("moment");
@@ -33,19 +33,19 @@ const generateWorkerPassword = () => {
 export const addWorker = asyncHandler(async (req, res, next) => {
   // Check if body is empty after normalization
   if (!req.body || Object.keys(req.body).length === 0) {
-    return next(new apiError('Request body cannot be empty', 400));
+    return next(new apiError("Request body cannot be empty", 400));
   }
 
   // Whitelist allowed fields to prevent mass assignment
   const allowedFields = [
-    'name',
-    'phoneNumber',
-    'jobTitle',
-    'salary',
-    'IdNumber',
-    'role',
-    'image',
-    'imagePublicId'
+    "name",
+    "phoneNumber",
+    "jobTitle",
+    "salary",
+    "IdNumber",
+    "role",
+    "image",
+    "imagePublicId",
   ];
 
   // Filter body to only include allowed fields
@@ -207,7 +207,7 @@ export const getSpacificWorker = asyncHandler(async (req, res, next) => {
 export const UpdateWorkerDetals = asyncHandler(async (req, res, next) => {
   // Check if body is empty after normalization
   if (!req.body || Object.keys(req.body).length === 0) {
-    return next(new apiError('Request body cannot be empty', 400));
+    return next(new apiError("Request body cannot be empty", 400));
   }
 
   // Strip image fields (handled separately)
@@ -215,13 +215,13 @@ export const UpdateWorkerDetals = asyncHandler(async (req, res, next) => {
 
   // Whitelist allowed fields to prevent mass assignment
   const allowedFields = [
-    'name',
-    'phoneNumber',
-    'jobTitle',
-    'salary',
-    'IdNumber',
-    'role',
-    'numberOfRepairs'
+    "name",
+    "phoneNumber",
+    "jobTitle",
+    "salary",
+    "IdNumber",
+    "role",
+    "numberOfRepairs",
   ];
 
   // Filter body to only include allowed fields
@@ -323,7 +323,7 @@ export const UpdateWorkerDetalsByNID = asyncHandler(async (req, res, next) => {
 
   // Check if body is empty after normalization
   if (!req.body || Object.keys(req.body).length === 0) {
-    return next(new apiError('Request body cannot be empty', 400));
+    return next(new apiError("Request body cannot be empty", 400));
   }
 
   // Strip image fields (handled separately)
@@ -331,13 +331,13 @@ export const UpdateWorkerDetalsByNID = asyncHandler(async (req, res, next) => {
 
   // Whitelist allowed fields to prevent mass assignment
   const allowedFields = [
-    'name',
-    'phoneNumber',
-    'jobTitle',
-    'salary',
-    'IdNumber',
-    'role',
-    'numberOfRepairs'
+    "name",
+    "phoneNumber",
+    "jobTitle",
+    "salary",
+    "IdNumber",
+    "role",
+    "numberOfRepairs",
   ];
 
   // Filter body to only include allowed fields
@@ -485,120 +485,135 @@ export const moneyFromToworker = asyncHandler(async (req, res, next) => {
 // @Route This should be called by a cron job on the first day of each month
 // @access private
 
-export const resetSalaryFieldsOnFirstDay = asyncHandler(async (req, res, next) => {
-  const currentDate = new Date();
-  const currentMonth = currentDate.getMonth() + 1;
-  const currentYear = currentDate.getFullYear();
+export const resetSalaryFieldsOnFirstDay = asyncHandler(
+  async (req, res, next) => {
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth() + 1;
+    const currentYear = currentDate.getFullYear();
 
-  const workers = await Worker.find({});
+    const workers = await Worker.find({});
 
-  for (const worker of workers) {
-    let greaterSavedMonth = 0;
-    let greaterSavedYear = 0;
+    for (const worker of workers) {
+      let greaterSavedMonth = 0;
+      let greaterSavedYear = 0;
 
-    // Find the latest month/year from loans, penalties, and rewards
-    worker.loans.forEach((loan) => {
-      const loanMonth = new Date(loan.date).getMonth() + 1;
-      const loanYear = new Date(loan.date).getFullYear();
-      if (loanMonth > greaterSavedMonth) {
-        greaterSavedMonth = loanMonth;
-      }
-      if (loanYear > greaterSavedYear) {
-        greaterSavedYear = loanYear;
-      }
-    });
+      // Find the latest month/year from loans, penalties, and rewards
+      worker.loans.forEach((loan) => {
+        const loanMonth = new Date(loan.date).getMonth() + 1;
+        const loanYear = new Date(loan.date).getFullYear();
+        if (loanMonth > greaterSavedMonth) {
+          greaterSavedMonth = loanMonth;
+        }
+        if (loanYear > greaterSavedYear) {
+          greaterSavedYear = loanYear;
+        }
+      });
 
-    worker.penalty.forEach((pen) => {
-      const penMonth = new Date(pen.date).getMonth() + 1;
-      const penYear = new Date(pen.date).getFullYear();
-      if (penMonth > greaterSavedMonth) {
-        greaterSavedMonth = penMonth;
-      }
-      if (penYear > greaterSavedYear) {
-        greaterSavedYear = penYear;
-      }
-    });
+      worker.penalty.forEach((pen) => {
+        const penMonth = new Date(pen.date).getMonth() + 1;
+        const penYear = new Date(pen.date).getFullYear();
+        if (penMonth > greaterSavedMonth) {
+          greaterSavedMonth = penMonth;
+        }
+        if (penYear > greaterSavedYear) {
+          greaterSavedYear = penYear;
+        }
+      });
 
-    worker.reward.forEach((re) => {
-      const reMonth = new Date(re.date).getMonth() + 1;
-      const reYear = new Date(re.date).getFullYear();
-      if (reMonth > greaterSavedMonth) {
-        greaterSavedMonth = reMonth;
-      }
-      if (reYear > greaterSavedYear) {
-        greaterSavedYear = reYear;
-      }
-    });
+      worker.reward.forEach((re) => {
+        const reMonth = new Date(re.date).getMonth() + 1;
+        const reYear = new Date(re.date).getFullYear();
+        if (reMonth > greaterSavedMonth) {
+          greaterSavedMonth = reMonth;
+        }
+        if (reYear > greaterSavedYear) {
+          greaterSavedYear = reYear;
+        }
+      });
 
-    // Reset salary fields if current month/year is greater than saved month/year
-    if (currentMonth > greaterSavedMonth || currentYear > greaterSavedYear) {
-      worker.salaryAfterProcces = worker.salary;
-      worker.salaryAfterReword = worker.salary;
-      worker.numberOfRepairs = 0;
-      await worker.save();
+      // Reset salary fields if current month/year is greater than saved month/year
+      if (currentMonth > greaterSavedMonth || currentYear > greaterSavedYear) {
+        worker.salaryAfterProcces = worker.salary;
+        worker.salaryAfterReword = worker.salary;
+        await worker.save();
+      }
     }
-  }
 
-  res.status(200).json({ 
-    message: "Salary fields reset successfully for eligible workers",
-    processedWorkers: workers.length 
-  });
-});
+    res.status(200).json({
+      message: "Salary fields reset successfully for eligible workers",
+      processedWorkers: workers.length,
+    });
+  },
+);
 
 // @desc Delete specific loan, penalty, or reward from worker
 // @Route DELETE /api/v1/Worker/:id/:type/:itemId
 // @access private
 
-export const deleteWorkerFinancialRecord = asyncHandler(async (req, res, next) => {
-  const { id, type, itemId } = req.params;
+export const deleteWorkerFinancialRecord = asyncHandler(
+  async (req, res, next) => {
+    const { id, type, itemId } = req.params;
 
-  // Validate type
-  const validTypes = ['loans', 'penalty', 'reward'];
-  if (!validTypes.includes(type)) {
-    return next(new apiError(`Invalid type. Must be one of: ${validTypes.join(', ')}`, 400));
-  }
+    // Validate type
+    const validTypes = ["loans", "penalty", "reward"];
+    if (!validTypes.includes(type)) {
+      return next(
+        new apiError(
+          `Invalid type. Must be one of: ${validTypes.join(", ")}`,
+          400,
+        ),
+      );
+    }
 
-  const worker = await Worker.findById(id);
+    const worker = await Worker.findById(id);
 
-  if (!worker) {
-    return next(new apiError(`Can't find worker with this id ${id}`, 404));
-  }
+    if (!worker) {
+      return next(new apiError(`Can't find worker with this id ${id}`, 404));
+    }
 
-  const arrayField = worker[type];
-  const itemIndex = arrayField.findIndex(item => item._id.toString() === itemId);
+    const arrayField = worker[type];
+    const itemIndex = arrayField.findIndex(
+      (item) => item._id.toString() === itemId,
+    );
 
-  if (itemIndex === -1) {
-    return next(new apiError(`${type.slice(0, -1)} not found with this id ${itemId}`, 404));
-  }
+    if (itemIndex === -1) {
+      return next(
+        new apiError(
+          `${type.slice(0, -1)} not found with this id ${itemId}`,
+          404,
+        ),
+      );
+    }
 
-  const item = arrayField[itemIndex];
+    const item = arrayField[itemIndex];
 
-  // Reverse the financial impact
-  if (type === 'loans' || type === 'penalty') {
-    // Loans and penalties are negative, so we add the amount back
-    worker.salaryAfterProcces = worker.salaryAfterProcces - item.amount;
-  } else if (type === 'reward') {
-    // Rewards are positive, so we subtract the amount
-    worker.salaryAfterReword = worker.salaryAfterReword - item.amount;
-    worker.salaryAfterProcces = worker.salaryAfterProcces - item.amount;
-  }
+    // Reverse the financial impact
+    if (type === "loans" || type === "penalty") {
+      // Loans and penalties are negative, so we add the amount back
+      worker.salaryAfterProcces = worker.salaryAfterProcces - item.amount;
+    } else if (type === "reward") {
+      // Rewards are positive, so we subtract the amount
+      worker.salaryAfterReword = worker.salaryAfterReword - item.amount;
+      worker.salaryAfterProcces = worker.salaryAfterProcces - item.amount;
+    }
 
-  // Remove the item
-  arrayField.splice(itemIndex, 1);
+    // Remove the item
+    arrayField.splice(itemIndex, 1);
 
-  await worker.save();
+    await worker.save();
 
-  // Remove salary fields from response
-  const workerResponse = worker.toObject();
-  delete workerResponse.salary;
-  delete workerResponse.salaryAfterProcces;
-  delete workerResponse.salaryAfterReword;
+    // Remove salary fields from response
+    const workerResponse = worker.toObject();
+    delete workerResponse.salary;
+    delete workerResponse.salaryAfterProcces;
+    delete workerResponse.salaryAfterReword;
 
-  res.status(200).json({ 
-    data: workerResponse, 
-    message: `${type.slice(0, -1)} deleted successfully` 
-  });
-});
+    res.status(200).json({
+      data: workerResponse,
+      message: `${type.slice(0, -1)} deleted successfully`,
+    });
+  },
+);
 
 // @desc Set worker profile image
 // @Route POST /api/v1/Worker/:id/image
@@ -606,8 +621,7 @@ export const deleteWorkerFinancialRecord = asyncHandler(async (req, res, next) =
 export const setWorkerImage = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const { image, imagePublicId } = req.body;
-  const previousPublicId =
-    (req as any).previousWorkerImagePublicId ?? null;
+  const previousPublicId = (req as any).previousWorkerImagePublicId ?? null;
 
   if (!image || !imagePublicId) {
     return next(new apiError("Image data is required", 400));
@@ -681,11 +695,15 @@ export const setWorkerPassword = asyncHandler(async (req, res, next) => {
   const { currentPassword, newPassword } = req.body;
 
   if (!currentPassword || !newPassword) {
-    return next(new apiError("Current password and new password are required", 400));
+    return next(
+      new apiError("Current password and new password are required", 400),
+    );
   }
 
   if (newPassword.length < 6) {
-    return next(new apiError("New password must be at least 6 characters", 400));
+    return next(
+      new apiError("New password must be at least 6 characters", 400),
+    );
   }
 
   const worker = await Worker.findById(id);
@@ -708,9 +726,9 @@ export const setWorkerPassword = asyncHandler(async (req, res, next) => {
   delete workerResponse.salaryAfterProcces;
   delete workerResponse.salaryAfterReword;
 
-  res.status(200).json({ 
+  res.status(200).json({
     data: workerResponse,
-    message: "Password updated successfully" 
+    message: "Password updated successfully",
   });
 });
 
@@ -722,7 +740,9 @@ export const getWorkerRepairCount = asyncHandler(async (req, res, next) => {
   const { startDate, endDate } = req.query;
 
   if (!startDate || !endDate) {
-    return next(new apiError("startDate and endDate query parameters are required", 400));
+    return next(
+      new apiError("startDate and endDate query parameters are required", 400),
+    );
   }
 
   const worker = await Worker.findById(id);
