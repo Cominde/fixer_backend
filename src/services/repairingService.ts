@@ -447,13 +447,16 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
     representative,
   });
 
-  // Increment numberOfRepairs for each technician
+  // Increment numberOfRepairs and monthlyRepairs for each technician
 
   if (technicians && technicians.length > 0) {
     for (const technician of technicians) {
       const worker = await Worker.findById(technician.workerId);
       if (worker) {
         worker.numberOfRepairs += 1;
+        if (complete) {
+          worker.monthlyRepairs += 1;
+        }
         await worker.save();
       }
     }
@@ -732,12 +735,15 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
     representative,
   });
 
-  // Increment numberOfRepairs for each technician
+  // Increment numberOfRepairs and monthlyRepairs for each technician
   if (technicians && technicians.length > 0) {
     for (const technician of technicians) {
       const worker = await Worker.findById(technician.workerId);
       if (worker) {
         worker.numberOfRepairs += 1;
+        if (complete) {
+          worker.monthlyRepairs += 1;
+        }
         await worker.save();
       }
     }
@@ -965,7 +971,20 @@ export const updateServiceStateById = asyncHandler(async (req, res, next) => {
       ],
       { new: true },
     );
-    if (doc) await syncCarWithRepair(doc);
+    if (doc) {
+      // If repair just became complete, increment monthlyRepairs for technicians
+      if (doc.complete && doc.technicians && doc.technicians.length > 0) {
+        for (const technician of doc.technicians) {
+          if (technician.workerId) {
+            await Worker.findByIdAndUpdate(
+              technician.workerId,
+              { $inc: { monthlyRepairs: 1 } }
+            );
+          }
+        }
+      }
+      await syncCarWithRepair(doc);
+    }
     return doc;
   });
 
@@ -1584,6 +1603,7 @@ const updateRepairHandler = async (req, res, next) => {
             const worker = await Worker.findById(workerId);
             if (worker) {
               worker.numberOfRepairs = Math.max(0, worker.numberOfRepairs - 1);
+              worker.monthlyRepairs = Math.max(0, worker.monthlyRepairs - 1);
               await worker.save();
             }
             repair.technicians = repair.technicians.filter(
@@ -1601,6 +1621,7 @@ const updateRepairHandler = async (req, res, next) => {
             const worker = await Worker.findById(workerId);
             if (worker) {
               worker.numberOfRepairs += 1;
+              worker.monthlyRepairs +=1;
               await worker.save();
             }
             repair.technicians.push({ workerId, name });
@@ -1715,6 +1736,7 @@ export const deleteRepair = asyncHandler(async (req, res, next) => {
       const worker = await Worker.findById(technician.workerId);
       if (worker) {
         worker.numberOfRepairs -= 1;
+        worker.monthlyRepairs-=1;
         await worker.save();
       }
     }

@@ -46,6 +46,10 @@ const workerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    monthlyRepairs: {
+      type: Number,
+      default: 0,
+    },
     roleId: {
       type: mongoose.Schema.ObjectId,
       ref: "Role",

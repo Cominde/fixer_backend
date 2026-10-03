@@ -535,6 +535,7 @@ export const resetSalaryFieldsOnFirstDay = asyncHandler(
       if (currentMonth > greaterSavedMonth || currentYear > greaterSavedYear) {
         worker.salaryAfterProcces = worker.salary;
         worker.salaryAfterReword = worker.salary;
+        worker.monthlyRepairs = 0;
         await worker.save();
       }
     }
