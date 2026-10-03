@@ -490,6 +490,19 @@ export const updateCar = asyncHandler(async (req, res, next) => {
     return next(new apiError(`No document for this id ${id}`, 404));
   }
 
+  // Keep the owner's embedded car summary in sync; login and the client app read it.
+  await User.updateOne(
+    { "car.id": document._id },
+    {
+      $set: {
+        "car.$.carNumber": document.carNumber,
+        "car.$.brand": document.brand,
+        "car.$.category": document.category,
+        "car.$.model": document.model,
+      },
+    },
+  );
+
   res.status(200).json({ data: document });
 });
 
@@ -619,7 +632,9 @@ export const deleteCar = asyncHandler(async (req, res, next) => {
   }
 
   if (user.car.length > 1) {
-    user.car = user.car.filter((c) => c.carNumber !== expectedCar.carNumber);
+    user.car = user.car.filter(
+      (c) => c.id?.toString() !== expectedCar._id.toString(),
+    );
     await user.save({ validateBeforeSave: false });
     await expectedCar.deleteOne();
     res.status(200).json({ message: "Car deleted successfully" });

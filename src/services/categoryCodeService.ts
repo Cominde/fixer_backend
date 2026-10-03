@@ -245,10 +245,10 @@ export const moveGeneratedCode = asyncHandler(async (req, res, next) => {
   car.category = targetCategory;
   await car.save();
 
-  // Update carCode in user schema
+  // Update carCode and category in user schema (match by old code, carNumber may be stale)
   await User.updateOne(
-    { "car.carNumber": car.carNumber },
-    { $set: { "car.$.carCode": newGeneratedCode } }
+    { "car.carCode": oldCode },
+    { $set: { "car.$.carCode": newGeneratedCode, "car.$.category": car.category } }
   );
 
   res.status(200).json({
