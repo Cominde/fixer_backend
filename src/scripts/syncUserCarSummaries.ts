@@ -9,6 +9,7 @@
  * embedded copy, so an edited carNumber/brand/category/model drifted and
  * broke loginByCarCode (it looked the car up by the stale carNumber).
  */
+export {};
 const path = require("path");
 const mongoose = require("mongoose");
 require("dotenv").config({ path: path.join(__dirname, "../../config.env") });
