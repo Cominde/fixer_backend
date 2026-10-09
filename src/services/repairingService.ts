@@ -1041,6 +1041,8 @@ const updateRepairHandler = async (req, res, next) => {
   // Walk-ins have no car; car bookkeeping is skipped for them.
   const hasCar = Boolean(repair.carId);
   const techniciansBefore = technicianIds(repair);
+  const discountBefore = toMoney(repair.discount);
+  const subtotalBefore = sumRepairLineTotals(repair);
 
   // Nothing is written until every change below has been validated.
   // Stock changes and car updates are collected here and applied after.
@@ -1374,7 +1376,16 @@ const updateRepairHandler = async (req, res, next) => {
 
   // Always rebuild money from current lines (no incremental drift)
   const { totalPrice } = applyRepairTotals(repair);
-  requireValidDiscount(repair.discount, totalPrice);
+  // Old invoices may already have a discount above their subtotal; editing
+  // them (a note, a date) stays allowed. Block only edits that make it worse.
+  if (
+    toMoney(repair.discount) > discountBefore ||
+    totalPrice < subtotalBefore
+  ) {
+    requireValidDiscount(repair.discount, totalPrice);
+  } else {
+    requireNonNegativeMoney(repair.discount, "Discount");
+  }
 
   // Everything is valid: take/return stock, then save. Undo stock if the save fails.
   const applied = await applyStockChanges(stockChanges);
