@@ -7,6 +7,13 @@ const moment = require("moment");
 const ApiFeatures = require("../utils/apiFeatures");
 const { searchService } = require("./searchService");
 const crypto = require("crypto");
+const mongoose = require("mongoose");
+const Role = require("../models/Role");
+const {
+  rollPayrollIntoCurrentPeriod,
+  refreshAllMonthlyRepairs,
+} = require("./payrollService");
+const { cairoPeriod } = require("../utils/cairoTime");
 const {
   safeDestroyWorkerImage,
   isSharedWorkerDefaultPublicId,
@@ -27,6 +34,20 @@ function stripWorkerImageFields(body: Record<string, unknown>) {
 const generateWorkerPassword = () => {
   return crypto.randomBytes(6).toString("hex").toUpperCase();
 };
+/**
+ * Reads `roleId` from the body: a role id, or null/"" to clear it.
+ * Returns undefined when the body doesn't mention a role.
+ */
+const readRoleId = async (body) => {
+  if (!Object.prototype.hasOwnProperty.call(body, "roleId")) return undefined;
+  const roleId = body.roleId;
+  if (roleId === null || roleId === "") return null;
+  if (!mongoose.Types.ObjectId.isValid(roleId) || !(await Role.exists({ _id: roleId }))) {
+    throw new apiError(`No role with id ${roleId}`, 400);
+  }
+  return roleId;
+};
+
 // @desc add Worker
 // @Route post /api/v1/Worker
 // @access private
@@ -56,7 +77,8 @@ export const addWorker = asyncHandler(async (req, res, next) => {
     }
   }
 
-  const { name, phoneNumber, jobTitle, salary, IdNumber, role } = filteredBody;
+  const { name, phoneNumber, jobTitle, salary, IdNumber } = filteredBody;
+  const roleId = await readRoleId(req.body);
 
   const generatedPassword = generateWorkerPassword();
 
@@ -68,7 +90,8 @@ export const addWorker = asyncHandler(async (req, res, next) => {
     IdNumber,
     salaryAfterProcces: salary,
     salaryAfterReword: salary,
-    role,
+    salaryPeriod: cairoPeriod(),
+    ...(roleId ? { roleId } : {}),
     generatedPassword,
   });
 
@@ -232,6 +255,9 @@ export const UpdateWorkerDetals = asyncHandler(async (req, res, next) => {
     }
   }
 
+  const roleId = await readRoleId(req.body);
+  if (roleId !== undefined) filteredBody.roleId = roleId;
+
   // Handle salary field updates
   if (filteredBody.salary) {
     if (!filteredBody.salaryAfterProcces) {
@@ -348,6 +374,9 @@ export const UpdateWorkerDetalsByNID = asyncHandler(async (req, res, next) => {
     }
   }
 
+  const roleId = await readRoleId(req.body);
+  if (roleId !== undefined) filteredBody.roleId = roleId;
+
   // Handle salary field updates
   if (filteredBody.salary) {
     if (!filteredBody.salaryAfterProcces) {
@@ -386,8 +415,6 @@ export const moneyFromToworker = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const { date, loans, penalty, reward } = req.body;
   let total = 0;
-  let greaterSavedMonth = 0;
-  let greaterSavedYear = 0;
   if (loans > 0 || penalty > 0 || reward < 0) {
     return next(
       new apiError(
@@ -416,43 +443,18 @@ export const moneyFromToworker = asyncHandler(async (req, res, next) => {
 
   // Use current date if date is not provided
   const transactionDate = date ? new Date(date) : new Date();
-  const currentMonth = transactionDate.getMonth() + 1;
-  const currentYear = transactionDate.getFullYear();
 
-  worker.loans.forEach((loan) => {
-    const loanMonth = new Date(loan.date).getMonth() + 1;
-    const loanYear = new Date(loan.date).getFullYear();
-    if (loanMonth > greaterSavedMonth) {
-      greaterSavedMonth = loanMonth;
-    }
-    if (loanYear > greaterSavedYear) {
-      greaterSavedYear = loanYear;
-    }
-  });
-  worker.penalty.forEach((pen) => {
-    const penMonth = new Date(pen.date).getMonth() + 1;
-    const penYear = new Date(pen.date).getFullYear();
-    if (penMonth > greaterSavedMonth) {
-      greaterSavedMonth = penMonth;
-    }
-    if (penYear > greaterSavedYear) {
-      greaterSavedYear = penYear;
-    }
-  });
-  worker.reward.forEach((re) => {
-    const reMonth = new Date(re.date).getMonth() + 1;
-    const reYear = new Date(re.date).getFullYear();
-    if (reMonth > greaterSavedMonth) {
-      greaterSavedMonth = reMonth;
-    }
-    if (reYear > greaterSavedYear) {
-      greaterSavedYear = reYear;
-    }
-  });
-  if (currentMonth > greaterSavedMonth || currentYear > greaterSavedYear) {
-    worker.salaryAfterProcces = worker.salary;
-    worker.salaryAfterReword = worker.salary;
+  // Close last month first if it hasn't been closed yet (snapshot + reset),
+  // so this amount lands on the current month's net salary.
+  if (worker.salaryPeriod !== cairoPeriod()) {
+    await rollPayrollIntoCurrentPeriod();
+    const fresh = await Worker.findById(id);
+    worker.salaryAfterProcces = fresh.salaryAfterProcces;
+    worker.salaryAfterReword = fresh.salaryAfterReword;
+    worker.monthlyRepairs = fresh.monthlyRepairs;
+    worker.salaryPeriod = fresh.salaryPeriod;
   }
+
   if (loans < 0) {
     worker.loans.push({ date: transactionDate, amount: loans });
     total = total + loans;
@@ -487,62 +489,17 @@ export const moneyFromToworker = asyncHandler(async (req, res, next) => {
 
 export const resetSalaryFieldsOnFirstDay = asyncHandler(
   async (req, res, next) => {
-    const currentDate = new Date();
-    const currentMonth = currentDate.getMonth() + 1;
-    const currentYear = currentDate.getFullYear();
-
-    const workers = await Worker.find({});
-
-    for (const worker of workers) {
-      let greaterSavedMonth = 0;
-      let greaterSavedYear = 0;
-
-      // Find the latest month/year from loans, penalties, and rewards
-      worker.loans.forEach((loan) => {
-        const loanMonth = new Date(loan.date).getMonth() + 1;
-        const loanYear = new Date(loan.date).getFullYear();
-        if (loanMonth > greaterSavedMonth) {
-          greaterSavedMonth = loanMonth;
-        }
-        if (loanYear > greaterSavedYear) {
-          greaterSavedYear = loanYear;
-        }
-      });
-
-      worker.penalty.forEach((pen) => {
-        const penMonth = new Date(pen.date).getMonth() + 1;
-        const penYear = new Date(pen.date).getFullYear();
-        if (penMonth > greaterSavedMonth) {
-          greaterSavedMonth = penMonth;
-        }
-        if (penYear > greaterSavedYear) {
-          greaterSavedYear = penYear;
-        }
-      });
-
-      worker.reward.forEach((re) => {
-        const reMonth = new Date(re.date).getMonth() + 1;
-        const reYear = new Date(re.date).getFullYear();
-        if (reMonth > greaterSavedMonth) {
-          greaterSavedMonth = reMonth;
-        }
-        if (reYear > greaterSavedYear) {
-          greaterSavedYear = reYear;
-        }
-      });
-
-      // Reset salary fields if current month/year is greater than saved month/year
-      if (currentMonth > greaterSavedMonth || currentYear > greaterSavedYear) {
-        worker.salaryAfterProcces = worker.salary;
-        worker.salaryAfterReword = worker.salary;
-        worker.monthlyRepairs = 0;
-        await worker.save();
-      }
-    }
+    // Snapshot each worker's closed month, then reset net salary and
+    // monthly repairs. Workers already on the current month are untouched,
+    // so running this twice is harmless.
+    const result = await rollPayrollIntoCurrentPeriod();
+    await refreshAllMonthlyRepairs();
 
     res.status(200).json({
       message: "Salary fields reset successfully for eligible workers",
-      processedWorkers: workers.length,
+      processedWorkers: result.processedWorkers,
+      resetWorkers: result.resetWorkers,
+      period: result.period,
     });
   },
 );

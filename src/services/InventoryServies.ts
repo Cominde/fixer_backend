@@ -6,35 +6,76 @@ const apiError = require("../utils/apiError");
 
 const { searchService } = require("./searchService");
 
+/**
+ * Inventory fields a request may set, validated. Quantities may be
+ * fractional (0.5 L of oil); nothing may be negative. The admin app sends
+ * `unit` / `minQuantity` alongside `Unit` / `alertQuantity`.
+ */
+const readInventoryBody = (body, { partial }) => {
+  const out: any = {};
+  if (body.name !== undefined) {
+    const name = String(body.name).trim();
+    if (!name) throw new apiError("Component name is required", 400);
+    out.name = name;
+  }
+  for (const [field, aliases] of [
+    ["quantity", ["quantity"]],
+    ["price", ["price"]],
+    ["alertQuantity", ["alertQuantity", "minQuantity"]],
+  ] as const) {
+    const key = aliases.find((k) => body[k] !== undefined && body[k] !== "");
+    if (key === undefined) continue;
+    const n = Number(body[key]);
+    if (!Number.isFinite(n) || n < 0) {
+      throw new apiError(`${field} must be a number of 0 or more`, 400);
+    }
+    out[field] = n;
+  }
+  const unit = body.Unit ?? body.unit;
+  if (unit !== undefined) out.Unit = unit;
+  if (body.Code !== undefined) out.Code = body.Code;
+
+  if (!partial) {
+    for (const field of ["name", "quantity", "price", "alertQuantity"]) {
+      if (out[field] === undefined) {
+        throw new apiError(`${field} is required`, 400);
+      }
+    }
+  }
+  return out;
+};
+
+/** Another item already using this name or code. */
+const findDuplicate = async ({ name, Code }, excludeId = null) => {
+  const exclude = excludeId ? { _id: { $ne: excludeId } } : {};
+  if (name) {
+    const byName = await Inventory.findOne({ ...exclude, name });
+    if (byName) return { field: "name", doc: byName };
+  }
+  if (Code) {
+    const byCode = await Inventory.findOne({ ...exclude, Code });
+    if (byCode) return { field: "Code", doc: byCode };
+  }
+  return null;
+};
+
 // @desc add Component
 // @Route GET /api/v1/Inventort
 // @access private
 export const addComponent = asyncHandler(async (req, res, next) => {
-  const inv = await Inventory.findOne({ name: req.body.name }, { new: true });
-  if (inv) {
+  const data = readInventoryBody(req.body || {}, { partial: false });
+
+  const duplicate = await findDuplicate(data);
+  if (duplicate) {
     return next(
       new apiError(
-        `there is an Component with this name , please do update instead of add the id of Component is ${inv._id}`,
+        `there is an Component with this ${duplicate.field} , please do update instead of add the id of Component is ${duplicate.doc._id}`,
         400,
       ),
     );
   }
 
-  if (req.body.Code) {
-    const ConponentCode = await Inventory.findOne(
-      { Code: req.body.Code },
-      { new: true },
-    );
-    if (ConponentCode) {
-      return next(
-        new apiError(
-          `there is an Component with this Code , please do update instead of add the id of Component is ${ConponentCode._id}`,
-          400,
-        ),
-      );
-    }
-  }
-  const newDoc = await Inventory.create(req.body);
+  const newDoc = await Inventory.create(data);
   res.status(201).json({ data: newDoc });
 });
 
@@ -59,7 +100,32 @@ export const getCom = factory.getOne(Inventory);
 // @desc Update spacific Component
 // @Route GET /api/v1/Inventort
 // @access private
-export const UpdateComponent = factory.updateOne(Inventory);
+export const UpdateComponent = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const data = readInventoryBody(req.body || {}, { partial: true });
+  if (Object.keys(data).length === 0) {
+    return next(new apiError("Nothing to update", 400));
+  }
+
+  const duplicate = await findDuplicate(data, id);
+  if (duplicate) {
+    return next(
+      new apiError(
+        `another Component already uses this ${duplicate.field} (id ${duplicate.doc._id})`,
+        400,
+      ),
+    );
+  }
+
+  const document = await Inventory.findByIdAndUpdate(id, data, {
+    new: true,
+    runValidators: true,
+  });
+  if (!document) {
+    return next(new apiError(`No document for this id ${id}`, 404));
+  }
+  res.status(200).json({ data: document });
+});
 
 // @desc search  Component
 // @Route GET /api/v1/Inventort/search/:searchString
