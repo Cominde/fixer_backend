@@ -7,10 +7,62 @@ const factory = require("./handlersFactory");
 const apiError = require("../utils/apiError");
 const asyncHandler = require("express-async-handler");
 const { ObjectId } = require("bson");
+const PayrollSnapshot = require("../models/PayrollSnapshot");
+const {
+  cairoMonthRange,
+  cairoDayRange,
+  cairoYearMonth,
+  cairoPeriod,
+  cairoWallTimeToUtc,
+  parseCairoDate,
+} = require("../utils/cairoTime");
 
 function getUTCDate(year, month) {
   return new Date(Date.UTC(year, month, 1));
 }
+
+const periodKey = (year, month) => `${year}-${String(month).padStart(2, "0")}`;
+
+/**
+ * Completed repairs whose income belongs to [year]/[month] (1-12): by the
+ * Cairo month they were completed in. Older repairs saved before
+ * completedAt existed keep the previous rule (creation month, UTC), so
+ * reports for past months come out the same.
+ */
+const monthIncomeFilter = (year, month) => {
+  const { start, end } = cairoMonthRange(year, month);
+  return {
+    complete: true,
+    $or: [
+      { completedAt: { $gte: start, $lt: end } },
+      {
+        completedAt: null,
+        createdAt: { $gte: getUTCDate(year, month - 1), $lt: getUTCDate(year, month) },
+      },
+    ],
+  };
+};
+
+const liveTotalSalaries = async () => {
+  const [row] = await Worker.aggregate([
+    { $group: { _id: null, totalSalaries: { $sum: "$salaryAfterProcces" } } },
+  ]);
+  return row ? row.totalSalaries : 0;
+};
+
+/**
+ * Salaries for a month: live worker rows for the open month, the month-close
+ * snapshot for closed months. A closed month with no snapshot (before
+ * snapshots existed) falls back to the live rows, as before.
+ */
+const totalSalariesFor = async (year, month) => {
+  if (periodKey(year, month) === cairoPeriod()) {
+    return { total: await liveTotalSalaries(), fromSnapshot: false };
+  }
+  const snapshot = await PayrollSnapshot.findOne({ period: periodKey(year, month) });
+  if (snapshot) return { total: snapshot.totalSalaries || 0, fromSnapshot: true };
+  return { total: await liveTotalSalaries(), fromSnapshot: false, estimated: true };
+};
 
 export const createReport = asyncHandler(async (req, res, next) => {
   let totalGain = 0;
@@ -32,8 +84,16 @@ export const createReport = asyncHandler(async (req, res, next) => {
     return next(new apiError("year and month must be valid numbers", 400));
   }
 
+  if (month < 1 || month > 12) {
+    return next(new apiError("month must be between 1 and 12", 400));
+  }
+
   const date = getUTCDate(year, month - 1);
-  const currentDate = new Date();
+  // Compare whole months (year * 12 + month) in Cairo time, so December of
+  // last year counts as a past month.
+  const now = cairoYearMonth();
+  const requestedIndex = year * 12 + (month - 1);
+  const currentIndex = now.year * 12 + (now.month - 1);
 
   const oldReport = await MonthlyMoneyReport.findOne({
     date: {
@@ -59,16 +119,9 @@ export const createReport = asyncHandler(async (req, res, next) => {
 
   // ملحوظة: استخدمنا getUTCMonth/getUTCFullYear بدل getMonth/getFullYear
   // عشان الحساب يبقى ثابت مهما كان الـ timezone بتاع السيرفر (local vs Render/UTC)
-  if (
-    (currentDate.getUTCMonth() > date.getUTCMonth() ||
-      currentDate.getUTCFullYear() > date.getUTCFullYear()) &&
-    oldReport
-  ) {
+  if (requestedIndex < currentIndex && oldReport) {
     return res.status(200).json({ data: oldReport });
-  } else if (
-    currentDate.getUTCMonth() < date.getUTCMonth() ||
-    currentDate.getUTCFullYear() < date.getUTCFullYear()
-  ) {
+  } else if (requestedIndex > currentIndex) {
     return next(
       new apiError(
         "the date that you enter will coming soon , if we live",
@@ -83,32 +136,17 @@ export const createReport = asyncHandler(async (req, res, next) => {
       },
     });
 
-    const repairs = await Repair.find({
-      createdAt: {
-        $gte: date,
-        $lt: getUTCDate(year, month),
-      },
-      complete:true
-    });
+    const repairs = await Repair.find(monthIncomeFilter(year, month));
 
     totalIncome = repairs.reduce(
-      (total, repair) => total + repair.priceAfterDiscount,
+      (total, repair) => total + (repair.priceAfterDiscount || 0),
       0,
     );
 
     // totalSalaries هنا أصلاً متضاف/متخصوم منه الـ reward/penalty
     // (لأنها جايه من salaryAfterProcces اللي بيتحسب جوه الـ Worker service)
-    const salariesAggregate = await Worker.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalSalaries: { $sum: "$salaryAfterProcces" },
-        },
-      },
-    ]);
-
-    const totalSalaries =
-      salariesAggregate.length > 0 ? salariesAggregate[0].totalSalaries : 0;
+    // الشهر المقفول بياخد المرتبات من الـ snapshot اللي اتاخد يوم 1
+    const { total: totalSalaries } = await totalSalariesFor(year, month);
 
     totalGain = totalIncome - totalSalaries;
     totaloutcome = totalSalaries;
@@ -348,13 +386,10 @@ export const getmonthWork = asyncHandler(async (req, res, next) => {
   const startDate = getUTCDate(year, month);
   const endDate = getUTCDate(year, month + 1);
 
-  const repairs = await Repair.find({
-    createdAt: {
-      $gte: startDate,
-      $lt: endDate,
-    },
-    complete:true
-  }).select("client brand category model createdAt priceAfterDiscount");
+  // Same repairs the monthly report counts as this month's income.
+  const repairs = await Repair.find(monthIncomeFilter(year, month + 1)).select(
+    "client brand category model createdAt completedAt priceAfterDiscount",
+  );
 
   const workers = await Worker.find().select("name salary");
 
@@ -471,6 +506,36 @@ export const deleteAddition = asyncHandler(async (req, res, next) => {
 
   const addition = monthlyReport.additions[additionIndex];
 
+  // Worker reward/penalty rows are display copies of the worker's record and
+  // were never added to the report totals (they're inside salaries).
+  if (addition.type === "reward" || addition.type === "penalty") {
+    const field = addition.type; // Worker arrays: "reward" / "penalty"
+    const worker = await Worker.findOne({ [`${field}._id`]: addition._id });
+    const record = worker?.[field]?.id(addition._id);
+
+    // Only an open month's record is removed from the worker; a closed
+    // month's pay was already settled, so only the row goes.
+    if (worker && record && worker.salaryPeriod === periodKey(year, month + 1)) {
+      const amount = Number(record.amount) || 0;
+      if (field === "reward") {
+        worker.salaryAfterReword = worker.salaryAfterReword - amount;
+      }
+      worker.salaryAfterProcces = worker.salaryAfterProcces - amount;
+      worker[field].pull(record._id);
+      await worker.save();
+
+      // This month's salaries changed by -amount; keep the totals in step.
+      monthlyReport.outCome -= amount;
+      monthlyReport.totalGain += amount;
+    }
+
+    monthlyReport.additions.splice(additionIndex, 1);
+    await monthlyReport.save();
+    return res
+      .status(200)
+      .json({ data: monthlyReport, message: "Addition deleted successfully" });
+  }
+
   // Reverse the financial impact
   if (addition.price > 0) {
     monthlyReport.encome -= addition.price;
@@ -499,14 +564,20 @@ export const getOrganizationReport = asyncHandler(async (req, res, next) => {
     return next(new apiError("from and to dates are required", 400));
   }
 
-  const fromDate = new Date(from);
-  const toDate = new Date(to);
-  toDate.setHours(23, 59, 59, 999);
+  // "YYYY-MM-DD" dates are Cairo calendar days; the range includes both ends.
+  const fromParts = parseCairoDate(from);
+  const toParts = parseCairoDate(to);
+  if (!fromParts || !toParts) {
+    return next(new apiError("from and to must be dates like 2026-10-01", 400));
+  }
+  const fromDate = cairoWallTimeToUtc(fromParts.year, fromParts.month - 1, fromParts.day);
+  const toDate = cairoWallTimeToUtc(toParts.year, toParts.month - 1, toParts.day + 1);
+  if (fromDate >= toDate) {
+    return next(new apiError("'from' must be on or before 'to'", 400));
+  }
 
-  // Get today's date for worker repairs (request day only)
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+  // Today's technician activity, by the Cairo calendar day.
+  const { start: todayStart, end: todayEnd } = cairoDayRange();
 
   // Get all workers (technicians)
   const workers = await Worker.find({}).select("name jobTitle salaryAfterProcces");
@@ -515,7 +586,7 @@ export const getOrganizationReport = asyncHandler(async (req, res, next) => {
   const todayWorkerRepairs = await Repair.aggregate([
     {
       $match: {
-        createdAt: { $gte: todayStart, $lte: todayEnd }
+        createdAt: { $gte: todayStart, $lt: todayEnd }
       }
     },
     {
@@ -592,30 +663,40 @@ export const getOrganizationReport = asyncHandler(async (req, res, next) => {
 
   // Calculate monthly income and gain for the date range
   const repairsInRange = await Repair.find({
-    createdAt: { $gte: fromDate, $lte: toDate },
+    createdAt: { $gte: fromDate, $lt: toDate },
   });
 
   const totalIncome = repairsInRange.reduce((sum, repair) => {
     return sum + (repair.totalPrice || 0);
   }, 0);
 
-  // Get workers' salaries for the period
-  const totalSalaries = workers.reduce((sum, worker) => {
-    return sum + (worker.salaryAfterProcces || 0);
-  }, 0);
+  // Expenses for every month the range touches: that month's salaries
+  // (snapshot for closed months) plus its rent and bills.
+  let totalExpenses = 0;
+  const estimatedSalaryMonths = [];
+  for (
+    let index = fromParts.year * 12 + (fromParts.month - 1);
+    index <= toParts.year * 12 + (toParts.month - 1);
+    index++
+  ) {
+    const year = Math.floor(index / 12);
+    const month = (index % 12) + 1;
+    // Months that haven't started yet have no salaries or bills.
+    if (periodKey(year, month) > cairoPeriod()) break;
+    const salaries = await totalSalariesFor(year, month);
+    totalExpenses += salaries.total;
+    if (salaries.estimated) estimatedSalaryMonths.push(periodKey(year, month));
 
-  // Get monthly report for the period (if exists)
-  const monthlyReport = await MonthlyMoneyReport.findOne({
-    date: { $gte: fromDate, $lte: toDate },
-  });
-
-  let totalExpenses = totalSalaries;
-  if (monthlyReport) {
-    if (monthlyReport.rent) totalExpenses += monthlyReport.rent;
-    if (monthlyReport.electricity_bill) totalExpenses += monthlyReport.electricity_bill;
-    if (monthlyReport.water_bill) totalExpenses += monthlyReport.water_bill;
-    if (monthlyReport.gas_bill) totalExpenses += monthlyReport.gas_bill;
-    if (monthlyReport.bills) totalExpenses += monthlyReport.bills;
+    const monthlyReport = await MonthlyMoneyReport.findOne({
+      date: getUTCDate(year, month - 1),
+    });
+    if (monthlyReport) {
+      totalExpenses +=
+        (monthlyReport.rent || 0) +
+        (monthlyReport.electricity_bill || 0) +
+        (monthlyReport.water_bill || 0) +
+        (monthlyReport.gas_bill || 0);
+    }
   }
 
   const totalGain = totalIncome - totalExpenses;
@@ -629,6 +710,8 @@ export const getOrganizationReport = asyncHandler(async (req, res, next) => {
       income: totalIncome,
       totalGain: totalGain,
       totalExpenses: totalExpenses,
+      // Closed months with no payroll snapshot use current salaries.
+      estimatedSalaryMonths,
     },
   });
 });

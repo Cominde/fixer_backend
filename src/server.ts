@@ -25,6 +25,10 @@ dotenv.config({ path: "config.env" });
 const apiError = require("./utils/apiError");
 const dbconnection = require("./config/database");
 const { resetSalaryFieldsOnFirstDay } = require("./services/WorksServices");
+const {
+  rollPayrollIntoCurrentPeriod,
+  refreshAllMonthlyRepairs,
+} = require("./services/payrollService");
 
 const { runBackup } = require("./utils/for_backup/backup");
 ///swagger
@@ -253,6 +257,13 @@ cron.schedule("0 0 1 * *", async () => {
   } catch (error) {
     console.error("Error in monthly salary reset cron job:", error);
   }
-});
+}, { timezone: "Africa/Cairo" });
+
+// If the server was asleep or restarting when the monthly job was due, close
+// the payroll month now. Workers already on the current month are untouched.
+rollPayrollIntoCurrentPeriod()
+  .then((result) => console.log("Payroll period check:", JSON.stringify(result)))
+  .then(() => refreshAllMonthlyRepairs())
+  .catch((error) => console.error("Payroll period check failed:", error));
 
 export {};

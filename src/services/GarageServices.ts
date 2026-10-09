@@ -13,6 +13,7 @@ const CategoryCode = require("../models/categoryCode");
 const { searchService, searchCarService } = require("./searchService");
 const { normalizeCarNumber } = require("../utils/carNumberCheck");
 const { removeBgExternal } = require("../utils/backgroundRemover");
+const { nextCarCode } = require("../utils/sequence");
 const openai = require('openai');
 
 // @desc    Add car
@@ -124,43 +125,12 @@ export const addCar = asyncHandler(async (req, res, next) => {
       return next(new apiError(`Invalid carCode. It must be a number.`, 400));
     }
     newCarCode = categoryCode.code + carCode;
-  } else {
-    const regex = new RegExp("^" + categoryCode.code + "\\d+$", "i");
-    const cars = await Car.aggregate([
-      { $match: { generatedCode: regex } },
-      {
-        $project: {
-          numericCode: {
-            $toInt: {
-              $substr: [
-                "$generatedCode",
-                { $strLenCP: categoryCode.code },
-                { $strLenCP: "$generatedCode" },
-              ],
-            },
-          },
-        },
-      },
-    ]);
-
-    const validCodes = cars
-      .map((car) => car.numericCode)
-      .filter((num) => !isNaN(num) && num > 0)
-      .sort((a, b) => a - b);
-
-    if (validCodes.length > 0) {
-      for (let i = 0; i < validCodes.length; i++) {
-        if (validCodes[i] !== i + 1) {
-          newCarCode = categoryCode.code + (i + 1);
-          break;
-        }
-      }
-      if (!newCarCode) {
-        newCarCode = categoryCode.code + (validCodes.length + 1);
-      }
-    } else {
-      newCarCode = categoryCode.code + "1";
+    if (await Car.exists({ generatedCode: newCarCode })) {
+      return next(new apiError(`The code ${newCarCode} is already used`, 400));
     }
+  } else {
+    // Codes come from a counter and are never handed out twice.
+    newCarCode = await nextCarCode(categoryCode.code);
   }
 
   // Check user exists

@@ -50,6 +50,11 @@ const workerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // Payroll month ("YYYY-MM", Cairo) that salaryAfterProcces /
+    // salaryAfterReword / monthlyRepairs currently belong to.
+    salaryPeriod: {
+      type: String,
+    },
     roleId: {
       type: mongoose.Schema.ObjectId,
       ref: "Role",

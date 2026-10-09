@@ -5,6 +5,7 @@ const apiError = require("../utils/apiError");
 const ApiFeatures = require("../utils/apiFeatures");
 const {searchService} = require("./searchService");
 const Car = require ("../models/Car");
+const { nextCarCode, peekCarCodeNumber } = require("../utils/sequence");
 const User = require("../models/userModel");
 // @doc create category code
 // @Route post /api/v1/Category/
@@ -155,30 +156,9 @@ export const suggestNextCodeNumber = asyncHandler(async (req, res, next) => {
     return next(new apiError(`There is no category with this code ${code}`, 400));
   }
 
-  const escapedCode = categoryCode.code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp("^" + escapedCode + "\\d+$", "i");
-
-  const cars = await Car.aggregate([
-    { $match: { generatedCode: regex } },
-    {
-      $project: {
-        numericCode: {
-          $toInt: {
-            $substr: [
-              "$generatedCode",
-              { $strLenCP: categoryCode.code },
-              { $strLenCP: "$generatedCode" },
-            ],
-          },
-        },
-      },
-    },
-    { $sort: { numericCode: -1 } },
-    { $limit: 1 },
-  ]);
-
-  const lastNumber = cars.length > 0 ? cars[0].numericCode : 0;
-  const nextNumber = lastNumber + 1;
+  // Same counter the add-client and add-car screens use.
+  const nextNumber = await peekCarCodeNumber(categoryCode.code);
+  const lastNumber = nextNumber - 1;
 
   res.status(200).json({
     data: {
@@ -212,32 +192,10 @@ export const moveGeneratedCode = asyncHandler(async (req, res, next) => {
     return next(new apiError(`No category found with name ${targetCategory}`, 404));
   }
 
-  // Get the last number for the target category
-  const escapedCode = targetCategoryCode.code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp("^" + escapedCode + "\\d+$", "i");
-
-  const cars = await Car.aggregate([
-    { $match: { generatedCode: regex } },
-    {
-      $project: {
-        numericCode: {
-          $toInt: {
-            $substr: [
-              "$generatedCode",
-              { $strLenCP: targetCategoryCode.code },
-              { $strLenCP: "$generatedCode" },
-            ],
-          },
-        },
-      },
-    },
-    { $sort: { numericCode: -1 } },
-    { $limit: 1 },
-  ]);
-
-  const lastNumber = cars.length > 0 ? cars[0].numericCode : 0;
-  const nextNumber = lastNumber + 1;
-  const newGeneratedCode = targetCategoryCode.code + nextNumber;
+  // Next code in the target category, from the same counter as new clients.
+  const newGeneratedCode = await nextCarCode(targetCategoryCode.code);
+  const nextNumber = Number(newGeneratedCode.slice(targetCategoryCode.code.length));
+  const lastNumber = nextNumber - 1;
 
   // Update car's generatedCode and category
   const oldCode = car.generatedCode;
