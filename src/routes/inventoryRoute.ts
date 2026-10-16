@@ -8,6 +8,7 @@ const {
   getCom,
   searchCom,
   getAllUnits,
+  deleteComponent,
 } = require("../services/InventoryServies");
 
 const { checkPermission } = require("../middlewares/checkPermission");
@@ -96,7 +97,10 @@ const { checkPermission } = require("../middlewares/checkPermission");
  *       400:
  *         description: Validation error
  */
-router.route("/").get(checkPermission("inventory.view"), getAllCom).post(checkPermission("inventory.add"), addComponent);
+router
+  .route("/")
+  .get(checkPermission("inventory.view"), getAllCom)
+  .post(checkPermission("inventory.add"), addComponent);
 
 /**
  * @swagger
@@ -175,9 +179,29 @@ router.route("/Units/").get(checkPermission("inventory.view"), getAllUnits);
  *         description: Component updated successfully
  *       404:
  *         description: Component not found
+ *   delete:
+ *     summary: delete an inventory component
+ *     tags: [Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "6734de56e41091cfb6b02f7e"
+ *     responses:
+ *       200:
+ *         description: Component deleted successfully
+ *       404:
+ *         description: Component not found
  */
-router.route("/:id").get(checkPermission("inventory.view"), getCom).put(checkPermission("inventory.edit"), UpdateComponent);
-
+router
+  .route("/:id")
+  .get(checkPermission("inventory.view"), getCom)
+  .put(checkPermission("inventory.edit"), UpdateComponent)
+  .delete(checkPermission("inventory.delete"), deleteComponent);
 /**
  * @swagger
  * /Inventort/search/{searchString}:
@@ -197,6 +221,8 @@ router.route("/:id").get(checkPermission("inventory.view"), getCom).put(checkPer
  *       200:
  *         description: Matching inventory components
  */
-router.route("/search/:searchString").get(checkPermission("inventory.view"), searchCom);
+router
+  .route("/search/:searchString")
+  .get(checkPermission("inventory.view"), searchCom);
 
 export = router;

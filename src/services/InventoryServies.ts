@@ -118,3 +118,7 @@ export const searchCom = asyncHandler(async (req, res, next) => {
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
   );*/
 });
+// @desc Update spacific Component
+// @Route GET /api/v1/Inventort
+// @access private
+export const deleteComponent = factory.deleteOne(Inventory);

@@ -19,7 +19,7 @@ const inventorySchema = new mongoose.Schema(
     Unit: {
       type: String,
     },
-    Code: {
+    barcode: {
       type: String,
     },
     alertQuantity: {
