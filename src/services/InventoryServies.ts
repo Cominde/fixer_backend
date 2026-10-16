@@ -33,7 +33,7 @@ const readInventoryBody = (body, { partial }) => {
   }
   const unit = body.Unit ?? body.unit;
   if (unit !== undefined) out.Unit = unit;
-  if (body.Code !== undefined) out.Code = body.Code;
+  if (body.barcode !== undefined) out.barcode = body.barcode;
 
   if (!partial) {
     for (const field of ["name", "quantity", "price", "alertQuantity"]) {
@@ -45,16 +45,16 @@ const readInventoryBody = (body, { partial }) => {
   return out;
 };
 
-/** Another item already using this name or code. */
-const findDuplicate = async ({ name, Code }, excludeId = null) => {
+/** Another item already using this name or barcode. */
+const findDuplicate = async ({ name, barcode }, excludeId = null) => {
   const exclude = excludeId ? { _id: { $ne: excludeId } } : {};
   if (name) {
     const byName = await Inventory.findOne({ ...exclude, name });
     if (byName) return { field: "name", doc: byName };
   }
-  if (Code) {
-    const byCode = await Inventory.findOne({ ...exclude, Code });
-    if (byCode) return { field: "Code", doc: byCode };
+  if (barcode) {
+    const byBarcode = await Inventory.findOne({ ...exclude, barcode });
+    if (byBarcode) return { field: "barcode", doc: byBarcode };
   }
   return null;
 };
@@ -184,7 +184,7 @@ export const searchCom = asyncHandler(async (req, res, next) => {
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
   );*/
 });
-// @desc Update spacific Component
-// @Route GET /api/v1/Inventort
+// @desc delete spacific Component
+// @Route delete /api/v1/Inventort/:id
 // @access private
 export const deleteComponent = factory.deleteOne(Inventory);

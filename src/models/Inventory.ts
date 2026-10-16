@@ -33,6 +33,6 @@ const inventorySchema = new mongoose.Schema(
 inventorySchema.plugin(cairoDatePlugin);
 
 inventorySchema.index({ name: 1 });
-inventorySchema.index({ Code: 1 });
+inventorySchema.index({ barcode: 1 });
 
 export = mongoose.model("Inventory", inventorySchema);

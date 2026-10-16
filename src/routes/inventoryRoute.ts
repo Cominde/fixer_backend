@@ -12,6 +12,11 @@ const {
 } = require("../services/InventoryServies");
 
 const { checkPermission } = require("../middlewares/checkPermission");
+const multer = require("multer");
+const normalizeBody = require("../middlewares/normalizeBody");
+
+// Configure multer for handling FormData (without file upload)
+const upload = multer({ storage: multer.memoryStorage() });
 
 /**
  * @swagger
@@ -100,7 +105,12 @@ const { checkPermission } = require("../middlewares/checkPermission");
 router
   .route("/")
   .get(checkPermission("inventory.view"), getAllCom)
-  .post(checkPermission("inventory.add"), addComponent);
+  .post(
+    upload.none(),
+    normalizeBody(),
+    checkPermission("inventory.add"),
+    addComponent
+  );
 
 /**
  * @swagger
@@ -200,7 +210,12 @@ router.route("/Units/").get(checkPermission("inventory.view"), getAllUnits);
 router
   .route("/:id")
   .get(checkPermission("inventory.view"), getCom)
-  .put(checkPermission("inventory.edit"), UpdateComponent)
+  .put(
+    upload.none(),
+    normalizeBody(),
+    checkPermission("inventory.edit"),
+    UpdateComponent
+  )
   .delete(checkPermission("inventory.delete"), deleteComponent);
 /**
  * @swagger
