@@ -17,6 +17,7 @@ const { send } = require("process");
 const { STATES } = require("mongoose");
 const { normalizeCarNumber } = require("../utils/carNumberCheck");
 const apiError = require("../utils/apiError");
+const { nextCarCode, peekCarCodeNumber } = require("../utils/sequence");
 // Function to generate a unique 8-digit code
 const generateUniqueCode = async () => {
   let isUnique = false;
@@ -160,13 +161,13 @@ export const createUser = asyncHandler(async (req, res, next) => {
       ),
     );
   }
+  const categoryCode = await CategoryCode.findOne({ category: clientType });
+  if (!categoryCode) {
+    return next(
+      new ApiError(`There is no type with this name ${clientType}`, 400),
+    );
+  }
   if (filteredBody.manually == "True" || filteredBody.manually == "true") {
-    const categoryCode = await CategoryCode.findOne({ category: clientType });
-    if (!categoryCode) {
-      return next(
-        new ApiError(`There is no type with this name ${clientType}`, 400),
-      );
-    }
     const carCode = filteredBody.carCode;
     const parsedCarCode = parseInt(carCode, 10);
 
@@ -175,52 +176,12 @@ export const createUser = asyncHandler(async (req, res, next) => {
     }
 
     newCarCode = categoryCode.code + carCode;
+    if (await Car.exists({ generatedCode: newCarCode })) {
+      return next(new ApiError(`The code ${newCarCode} is already used`, 400));
+    }
   } else {
-    const categoryCode = await CategoryCode.findOne({ category: clientType });
-    if (!categoryCode) {
-      return next(
-        new ApiError(`There is no type with this name ${clientType}`, 400),
-      );
-    }
-
-    const regex = new RegExp("^" + categoryCode.code + "\\d+$", "i");
-
-    const cars = await Car.aggregate([
-      { $match: { generatedCode: regex } },
-      {
-        $project: {
-          numericCode: {
-            $toInt: {
-              $substr: [
-                "$generatedCode",
-                { $strLenCP: categoryCode.code },
-                { $strLenCP: "$generatedCode" },
-              ],
-            },
-          },
-        },
-      },
-    ]);
-
-    const validCodes = cars
-      .map((car) => car.numericCode)
-      .filter((num) => !isNaN(num) && num > 0)
-      .sort((a, b) => a - b);
-
-    if (validCodes.length > 0) {
-      for (let i = 0; i < validCodes.length; i++) {
-        if (validCodes[i] !== i + 1) {
-          newCarCode = categoryCode.code + (i + 1);
-          break;
-        }
-      }
-
-      if (!newCarCode) {
-        newCarCode = categoryCode.code + (validCodes.length + 1);
-      }
-    } else {
-      newCarCode = categoryCode.code + "1";
-    }
+    // Codes come from a counter and are never handed out twice.
+    newCarCode = await nextCarCode(categoryCode.code);
   }
 
   const newCar = await Car.create({
@@ -560,45 +521,7 @@ export const suggestNextCodeNumber = asyncHandler(async (req, res, next) => {
       ),
     );
   }
-  let newCarCode = 0;
-  const regex = new RegExp("^" + categoryCode.code + "\\d+$", "i");
-
-  const cars = await Car.aggregate([
-    { $match: { generatedCode: regex } },
-    {
-      $project: {
-        numericCode: {
-          $toInt: {
-            $substr: [
-              "$generatedCode",
-              { $strLenCP: categoryCode.code },
-              { $strLenCP: "$generatedCode" },
-            ],
-          },
-        },
-      },
-    },
-  ]);
-
-  const validCodes = cars
-    .map((car) => car.numericCode)
-    .filter((num) => !isNaN(num) && num > 0)
-    .sort((a, b) => a - b);
-
-  if (validCodes.length > 0) {
-    for (let i = 0; i < validCodes.length; i++) {
-      if (validCodes[i] !== i + 1) {
-        newCarCode = i + 1;
-        break;
-      }
-    }
-
-    if (!newCarCode) {
-      newCarCode = validCodes.length + 1;
-    }
-  } else {
-    newCarCode = 1;
-  }
+  const newCarCode = await peekCarCodeNumber(categoryCode.code);
   res.status(200).json({ data: newCarCode });
 });
 // @doc    delte user from the database

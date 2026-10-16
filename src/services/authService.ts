@@ -119,17 +119,15 @@ export const loginByCarCode = asyncHandler(async (req, res, next) => {
   if (user.fcmToken) {
     await admin.messaging().subscribeToTopic(user.fcmToken, "all_users");
   }
-  let carNumber = 0;
-  for (var i = 0; i < user.car.length; i++) {
-    if (user.car[i].carCode == req.body.carCode) {
-      carNumber = user.car[i].carNumber;
-      break;
-    }
-  }
-  if (!carNumber) {
+  const userCar = user.car.find((c) => c.carCode == req.body.carCode);
+  if (!userCar) {
     return next(new ApiError("No car found for the given carCode", 404));
   }
-  const car = await Car.findOne({ carNumber });
+  // Look up by the stable code/id, not carNumber: the embedded user.car copy
+  // can hold a stale carNumber after the car is edited.
+  const car =
+    (await Car.findOne({ generatedCode: userCar.carCode })) ||
+    (userCar.id ? await Car.findById(userCar.id) : null);
 
   if (!car) {
     return next(new ApiError("No car found for the given carCode", 404));

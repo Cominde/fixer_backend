@@ -1,4 +1,5 @@
 const Car = require("../models/Car");
+const User = require("../models/userModel");
 const asyncHandler = require("express-async-handler");
 // @desc    get brands
 // @route   get /api/V2/ClearCarData/brands/
@@ -51,6 +52,10 @@ export const cleanBrands = asyncHandler(async (req, res, next) => {
 
     if (Object.keys(updates).length > 0) {
       await Car.findByIdAndUpdate(car._id, updates);
+      // Keep the owner's embedded car summary in sync
+      const userUpdates: any = {};
+      for (const [k, v] of Object.entries(updates)) userUpdates[`car.$.${k}`] = v;
+      await User.updateOne({ "car.id": car._id }, { $set: userUpdates });
       updatedCount++;
     }
   }
@@ -171,6 +176,10 @@ export const cleanCategories = asyncHandler(async (req, res, next) => {
 
     if (Object.keys(updates).length > 0) {
       await Car.findByIdAndUpdate(car._id, updates);
+      // Keep the owner's embedded car summary in sync
+      const userUpdates: any = {};
+      for (const [k, v] of Object.entries(updates)) userUpdates[`car.$.${k}`] = v;
+      await User.updateOne({ "car.id": car._id }, { $set: userUpdates });
       changeLog.push({
         id: car._id,
         from: car.category,

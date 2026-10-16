@@ -9,7 +9,18 @@ const apiError = require("../utils/apiError");
 const ApiFeatures = require("../utils/apiFeatures");
 const { searchService, searchCarService } = require("./searchService");
 const { normalizeCarNumber } = require("../utils/carNumberCheck");
-const { sendLowQuantityNotification } = require("./notificationFire");
+const mongoose = require("mongoose");
+const {
+  applyStockChanges,
+  revertStockChanges,
+  findInventoryForLine,
+} = require("./stockService");
+const { refreshMonthlyRepairs, technicianIds } = require("./payrollService");
+const {
+  INVOICE_PREFIX,
+  nextInvoiceNumber,
+  peekInvoiceNumber,
+} = require("../utils/sequence");
 const asyncHandler = require("express-async-handler");
 const { body } = require("express-validator");
 const { ObjectId } = require("bson");
@@ -121,12 +132,12 @@ const syncCarWithRepair = async (repair, nextRepairDate?) => {
   return true;
 };
 
-async function resolveReceptionForRequest(req) {
-  if (hasReceptionInput(req.body)) {
-    return resolveReceptionEngineer(req.body);
+async function resolveReceptionForRequest(body, user) {
+  if (hasReceptionInput(body)) {
+    return resolveReceptionEngineer(body);
   }
-  if (req.user && req.user._id) {
-    const worker = await Worker.findById(req.user._id);
+  if (user && user._id) {
+    const worker = await Worker.findById(user._id);
     if (worker && worker.name) {
       return sanitizePersonName(worker.name, { fallback: "NA" }) || "NA";
     }
@@ -134,10 +145,279 @@ async function resolveReceptionForRequest(req) {
   return "NA";
 }
 
+const isMissing = (value) =>
+  value === undefined || value === null || value === "";
+
+/** A money amount that must be a number of 0 or more. Missing counts as 0. */
+const requireNonNegativeMoney = (value, label) => {
+  if (isMissing(value)) return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new apiError(`${label} must be a number of 0 or more`, 400);
+  }
+  return n;
+};
+
+const requirePositiveQty = (value, label) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new apiError(`Quantity for ${label} must be greater than zero`, 400);
+  }
+  return n;
+};
+
+/** Discount must be between 0 and the invoice subtotal. */
+const requireValidDiscount = (discount, subtotal) => {
+  const amount = requireNonNegativeMoney(discount, "Discount");
+  if (amount > round2(subtotal) + 1e-9) {
+    throw new apiError(
+      `Discount (${amount}) can't be more than the invoice subtotal (${round2(subtotal)})`,
+      400,
+    );
+  }
+  return amount;
+};
+
+const carStateAfterRepair = (complete, nextRepairDate) => {
+  if (!complete) return "Repair";
+  return new Date() < new Date(nextRepairDate) ? "Good" : "Need to check";
+};
+
+/**
+ * Creates a repair (registered car, registered walk-in or anonymous walk-in).
+ *
+ * Everything is validated before anything is written. Stock is then taken
+ * in one all-or-nothing step, and put back if the repair can't be saved, so
+ * a failed request never leaves stock deducted.
+ *
+ * opts.car                 registered car; omit for an anonymous walk-in
+ * opts.attributionBody     body read for receptionEngineer / representative
+ * opts.keepComponentPrices use each component line's own `price` (quote conversion)
+ * opts.expectedDate        fixed expected date instead of now + daysItTake
+ * opts.preserveCarSchedule keep the car's next service date/distance (registered walk-in)
+ */
+export const createRepairCore = async (req, input, opts: any = {}) => {
+  const { components, services, additions } = input;
+  if (
+    !Array.isArray(components) ||
+    !Array.isArray(services) ||
+    !Array.isArray(additions)
+  ) {
+    throw new apiError(
+      "Components, services, and additions arrays are required",
+      400,
+    );
+  }
+
+  const car = opts.car || null;
+  const type = car ? input.type : input.type || "periodic";
+  if (car && type !== "periodic" && type !== "nonPeriodic") {
+    throw new apiError(`the type must be periodic or nonPeriodic only`, 400);
+  }
+
+  let totalPrice = 0;
+  let totalServicesCount = 0;
+  let completedServices = 0;
+
+  const normalizedServices = services.map((s) => {
+    const price = requireNonNegativeMoney(
+      s?.price,
+      `Price of service "${s?.name ?? ""}"`,
+    );
+    totalPrice += price;
+    totalServicesCount++;
+    if (s?.state === "completed") completedServices++;
+    return { ...s, price };
+  });
+
+  const normalizedAdditions = additions.map((a) => {
+    const price = requireNonNegativeMoney(
+      a?.price,
+      `Price of addition "${a?.name ?? ""}"`,
+    );
+    totalPrice += price;
+    return { ...a, price };
+  });
+
+  // Read-only checks; stock is only taken once the whole invoice is valid.
+  const repairDetails = [];
+  const stockChanges = [];
+  for (const line of components) {
+    const id = line?.id;
+    const inventoryComponent = mongoose.Types.ObjectId.isValid(id)
+      ? await Inventory.findById(id)
+      : null;
+    if (!inventoryComponent) {
+      throw new apiError(`Component with ID ${id} not found in inventory`, 404);
+    }
+    const qty = requirePositiveQty(line.quantity, inventoryComponent.name);
+    if (inventoryComponent.quantity < qty) {
+      throw new apiError(`Not enough quantity for component with id ${id}`, 400);
+    }
+
+    // component.price is always LINE TOTAL (unit × qty)
+    const componentPrice = opts.keepComponentPrices
+      ? requireNonNegativeMoney(line.price, `Price of ${inventoryComponent.name}`)
+      : toMoney(inventoryComponent.price) * qty;
+    totalPrice += componentPrice;
+
+    repairDetails.push({
+      name: inventoryComponent.name,
+      quantity: qty,
+      price: componentPrice,
+      _id: new ObjectId(String(id)),
+    });
+    stockChanges.push({ id: String(id), qty });
+  }
+
+  const discountAmount = requireValidDiscount(input.discount, totalPrice);
+  const priceAfterDiscount = round2(totalPrice - discountAmount);
+  const completedServicesRatio =
+    totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
+  // Anonymous walk-ins always start open, as before.
+  const complete = car ? completedServices === totalServicesCount : false;
+
+  // Next service schedule (registered cars only).
+  let finalDistance = input.distance;
+  let nextDistance = input.nextRepairDistance;
+  let nextRDate = input.nextRepairDate;
+  if (car) {
+    if (opts.preserveCarSchedule) {
+      nextDistance = car.nextRepairDistance;
+      nextRDate = car.nextRepairDate;
+      if (isMissing(finalDistance)) finalDistance = car.distances;
+    } else if (
+      type === "nonPeriodic" ||
+      input.nextRepairDate === "" ||
+      input.nextRepairDistance === ""
+    ) {
+      // For non-periodic repairs or when nextRepairDate/nextRepairDistance are empty, get values from last periodic repair
+      const lastPeriodicRepair = await Repairing.findOne({
+        carNumber: input.carNumber,
+        type: "periodic",
+      }).sort({ createdAt: -1 });
+
+      if (lastPeriodicRepair) {
+        nextDistance = lastPeriodicRepair.nextRepairDistance || 0;
+        nextRDate = lastPeriodicRepair.nextRepairDate;
+      } else {
+        nextDistance = 0;
+        nextRDate = undefined;
+      }
+    }
+  }
+
+  let newId;
+  if (input.manually == "True" || input.manually == true) {
+    const parsedCarCode = parseInt(input.id, 10);
+    if (isNaN(parsedCarCode) || !Number.isInteger(parsedCarCode)) {
+      throw new apiError(`Invalid carCode. It must be a number.`, 400);
+    }
+    newId = INVOICE_PREFIX + parsedCarCode;
+    if (await Repairing.exists({ genId: newId })) {
+      throw new apiError(`Repairing with id ${newId} already exists.`, 400);
+    }
+  } else {
+    newId = await nextInvoiceNumber();
+  }
+
+  const expectedDate = opts.expectedDate
+    ? new Date(opts.expectedDate)
+    : new Date();
+  if (!opts.expectedDate && Number(input.daysItTake) > 0) {
+    expectedDate.setDate(expectedDate.getDate() + parseInt(input.daysItTake));
+  }
+
+  const attribution = opts.attributionBody || {};
+  const receptionEngineer = await resolveReceptionForRequest(
+    attribution,
+    req.user,
+  );
+  const representative = resolveRepresentative(attribution);
+  const technicians = Array.isArray(input.technicians) ? input.technicians : [];
+
+  const applied = await applyStockChanges(stockChanges);
+  let repair;
+  try {
+    repair = await Repairing.create({
+      client: car ? car.ownerName : input.clientName,
+      genId: newId,
+      brand: car ? car.brand : input.brand,
+      category: car ? car.category : input.category,
+      model: car ? car.model : input.model,
+      component: repairDetails,
+      Services: normalizedServices,
+      additions: normalizedAdditions,
+      carNumber: input.carNumber,
+      type,
+      totalPrice,
+      discount: discountAmount,
+      priceAfterDiscount,
+      expectedDate,
+      complete,
+      completedServicesRatio,
+      Note1: input.Note1,
+      Note2: input.Note2,
+      distance: car ? finalDistance : toMoney(input.distance),
+      ...(car
+        ? {
+            nextRepairDistance: nextDistance,
+            nextRepairDate: nextRDate,
+            carId: car._id,
+            generatedCode: car.generatedCode,
+          }
+        : {}),
+      technicians,
+      Reception: receptionEngineer,
+      receptionEngineer,
+      representative,
+    });
+  } catch (error) {
+    await revertStockChanges(applied);
+    throw error;
+  }
+
+  if (car) {
+    if (type == "periodic") {
+      car.periodicRepairs = (car.periodicRepairs || 0) + 1;
+    } else {
+      car.nonPeriodicRepairs = (car.nonPeriodicRepairs || 0) + 1;
+    }
+    car.distances = finalDistance;
+    car.nextRepairDistance = nextDistance;
+    car.nextRepairDate = nextRDate;
+    car.State = carStateAfterRepair(complete, nextRDate);
+    car.completedServicesRatio = completedServicesRatio;
+    if (complete) {
+      car.lastRepairDate = new Date();
+      car.repairing = false;
+    } else {
+      car.repairing_id = repair._id;
+      car.repairing = true;
+    }
+    try {
+      await car.save({ validateBeforeSave: false });
+    } catch (error) {
+      console.error(`Repair ${repair._id} saved but car ${car._id} update failed:`, error);
+    }
+  }
+
+  for (const technician of technicians) {
+    if (mongoose.Types.ObjectId.isValid(technician?.workerId)) {
+      await Worker.updateOne(
+        { _id: technician.workerId },
+        { $inc: { numberOfRepairs: 1 } },
+      );
+    }
+  }
+  await refreshMonthlyRepairs(technicianIds(repair));
+
+  return repair;
+};
+
 // @desc create a repairing
 // @Route POST /api/v1/repairing
 // @access private
-
 export const createRepairing = asyncHandler(async (req, res, next) => {
   // Check if body is empty after normalization
   if (!req.body || Object.keys(req.body).length === 0) {
@@ -173,306 +453,18 @@ export const createRepairing = asyncHandler(async (req, res, next) => {
     }
   }
 
-  let totalPrice = 0;
-  let totalServicesCount = 0;
-  let completedServices = 0;
-  let periodicRepairs = 0;
-  let nonperiodicRepairs = 0;
-  let complete = false;
-  let newId: any = 0;
-  const const_part_of_id = "2021";
-  const {
-    components,
-    services,
-    additions,
-    carNumber,
-    type,
-    discount,
-    daysItTake,
-    nextRepairDate,
-    Note1,
-    Note2,
-    distance,
-    nextRepairDistance,
-    technicians,
-  } = filteredBody;
-  // For non-periodic repairs or when nextRepairDate/nextRepairDistance are empty, get values from last periodic repair
-  let finalDistance = filteredBody.distance;
-  let nextDistance = filteredBody.nextRepairDistance;
-  let nextRDate = filteredBody.nextRepairDate;
-  if (type === "nonPeriodic" || nextRepairDate === "" || nextRepairDistance === "") {
-    const lastPeriodicRepair = await Repairing.findOne({
-      carNumber: carNumber,
-      type: "periodic",
-    }).sort({ createdAt: -1 });
-
-    if (lastPeriodicRepair) {
-      // Use nextRepairDistance and nextRepairDate from the last periodic repair
-      nextDistance = lastPeriodicRepair.nextRepairDistance || 0;
-      nextRDate = lastPeriodicRepair.nextRepairDate;
-    } else {
-      // No periodic repair found, set to default values
-      nextDistance = 0;
-      nextRDate = undefined;
-    }
-  }
-  if (filteredBody.manually == "True" || filteredBody.manually == true) {
-    const id = filteredBody.id;
-    const parsedCarCode = parseInt(id, 10);
-
-    if (isNaN(parsedCarCode) || !Number.isInteger(parsedCarCode)) {
-      return next(new apiError(`Invalid carCode. It must be a number.`, 400));
-    }
-
-    newId = const_part_of_id + parsedCarCode;
-    const exRepair = await Repairing.findOne({ genId: newId });
-    if (exRepair) {
-      return next(
-        new apiError(`Repairing with id ${newId} already exists.`, 400),
-      );
-    }
-  } else {
-    const regex = new RegExp("^" + const_part_of_id + "\\d+$", "i");
-
-    const repairs = await Repairing.aggregate([
-      { $match: { genId: regex } }, //match genId starting with '2021'
-      {
-        $project: {
-          numericCode: {
-            $toInt: {
-              $substr: [
-                "$genId",
-                { $strLenCP: const_part_of_id }, //skip 2021
-                {
-                  $subtract: [
-                    { $strLenCP: "$genId" },
-                    { $strLenCP: const_part_of_id },
-                  ],
-                },
-              ],
-            },
-          },
-        },
-      },
-    ]);
-
-    const validCodes = repairs
-      .map((repair) => repair.numericCode)
-      .filter((num) => !isNaN(num) && num > 0)
-      .sort((a, b) => a - b);
-
-    //find the first missing number or create the next newId
-    if (validCodes.length > 0) {
-      for (let i = 0; i < validCodes.length; i++) {
-        if (validCodes[i] !== i + 1) {
-          newId = const_part_of_id + (i + 1);
-          break;
-        }
-      }
-
-      if (!newId) {
-        newId = const_part_of_id + (validCodes.length + 1);
-      }
-    } else {
-      newId = const_part_of_id + "1";
-    }
-  }
-  if (!components || !services || !additions) {
+  const car = await Car.findOne({ carNumber: filteredBody.carNumber });
+  if (!car) {
     return next(
-      new apiError(
-        "Components, services, and additions arrays are required",
-        400,
-      ),
+      new apiError(`No car for this number ${filteredBody.carNumber}`, 404),
     );
   }
 
-  const repairDetails = [];
-
-  for (const { price, state } of services) {
-    totalPrice += toMoney(price);
-    totalServicesCount++;
-    if (state === "completed") {
-      completedServices++;
-    }
-  }
-
-  for (const { price } of additions) {
-    totalPrice += toMoney(price);
-  }
-
-  for (const { id, quantity } of components) {
-    const qty = toMoney(quantity);
-    const inventoryComponent = await Inventory.findById(id);
-
-    if (!inventoryComponent) {
-      return next(
-        new apiError(`Component with ID ${id} not found in inventory`, 404),
-      );
-    }
-    if (
-      inventoryComponent.quantity < qty ||
-      inventoryComponent.quantity < 0
-    ) {
-      return next(
-        new apiError(`Not enough quantity for component with id ${id}`, 400),
-      );
-    }
-    inventoryComponent.quantity -= qty;
-
-    await inventoryComponent.save({ validateBeforeSave: false });
-
-    // Check if quantity is low and send notification to admin
-    if (inventoryComponent.quantity < inventoryComponent.alertQuantity) {
-      try {
-        await sendLowQuantityNotification(
-          inventoryComponent.name,
-          inventoryComponent.quantity,
-        );
-      } catch (error) {
-        console.error("Failed to send low quantity notification:", error);
-      }
-    }
-
-    // component.price is always LINE TOTAL (unit × qty)
-    const componentPrice = toMoney(inventoryComponent.price) * qty;
-    totalPrice += componentPrice;
-
-    repairDetails.push({
-      name: inventoryComponent.name,
-      quantity: qty,
-      price: componentPrice,
-      _id : new ObjectId(id)
-    });
-  }
-  /*if (type == "periodic") {
-      periodicRepairs += 1;
-    } else {
-      nonperiodicRepairs += 1;
-    }*/
-
-  const reCar = await Car.findOne({ carNumber: carNumber });
-  if (!reCar) {
-    return next(new apiError(`No car for this number ${carNumber}`, 404));
-  }
-  periodicRepairs = reCar.periodicRepairs;
-  nonperiodicRepairs = reCar.nonPeriodicRepairs;
-  if (type == "periodic" || type == "nonPeriodic") {
-    if (type == "periodic") {
-      periodicRepairs += 1;
-    } else {
-      nonperiodicRepairs += 1;
-    }
-  } else {
-    return next(
-      new apiError(`the type must be periodic or nonPeriodic only`, 400),
-    );
-  }
-  reCar.periodicRepairs = periodicRepairs;
-  reCar.nonPeriodicRepairs = nonperiodicRepairs;
-  reCar.distances = finalDistance;
-  reCar.nextRepairDistance = nextDistance;
-  reCar.nextRepairDate = nextRDate;
-
-  const currentDate = new Date();
-  const parsedNextPerDate = new Date(nextRDate);
-  if (completedServices === totalServicesCount) {
-    complete = true;
-    const lastRepairDate = new Date();
-    reCar.lastRepairDate = lastRepairDate;
-    reCar.repairing = !complete
-  }
-
-  const completedServicesRatio =
-    totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
-  const discountAmount = toMoney(discount);
-  const priceAfterDiscount = round2(totalPrice - discountAmount);
-
-  let state = "";
-
-  if (!complete) {
-    state = "Repair";
-  } else if (currentDate < parsedNextPerDate && complete) {
-    state = "Good";
-  } else {
-    state = "Need to check";
-  }
-  reCar.State = state;
-  reCar.completedServicesRatio = completedServicesRatio
-
-  reCar.save();
-  const expectedDate = new Date();
-  if(req.body.daysItTake && Number(req.body.daysItTake) > 0){
-    expectedDate.setDate(expectedDate.getDate() + parseInt(req.body.daysItTake));
-  }
-  const car = await Car.findOne({ carNumber });
-  const receptionEngineer = await resolveReceptionForRequest(req);
-  const representative = resolveRepresentative(req.body);
-
-  const normalizedServices = (services || []).map((s) => ({
-    ...s,
-    price: toMoney(s.price),
-  }));
-  const normalizedAdditions = (additions || []).map((a) => ({
-    ...a,
-    price: toMoney(a.price),
-  }));
-
-  const repair = await Repairing.create({
-    client: car.ownerName,
-    genId: newId,
-    brand: car.brand,
-    category: car.category,
-    model: car.model,
-    component: repairDetails,
-    Services: normalizedServices,
-    additions: normalizedAdditions,
-    carNumber,
-    type,
-    totalPrice,
-    discount: discountAmount,
-    priceAfterDiscount,
-    expectedDate,
-    complete,
-    completedServicesRatio,
-    Note1,
-    Note2,
-    distance: finalDistance,
-    nextRepairDistance:nextDistance,
-    nextRepairDate: nextRDate,
-    carId: car._id,
-    generatedCode: car.generatedCode,
-    technicians: technicians || [],
-    Reception: receptionEngineer,
-    receptionEngineer,
-    representative,
+  const repair = await createRepairCore(req, filteredBody, {
+    car,
+    attributionBody: req.body,
   });
 
-  // Increment numberOfRepairs and monthlyRepairs for each technician
-
-  if (technicians && technicians.length > 0) {
-    for (const technician of technicians) {
-      const worker = await Worker.findById(technician.workerId);
-      if (worker) {
-        worker.numberOfRepairs += 1;
-        if (complete) {
-          worker.monthlyRepairs += 1;
-        }
-        await worker.save();
-      }
-    }
-  }
-  if (!complete) {
-    const car = await Car.findOneAndUpdate(
-      { carNumber: carNumber },
-      { repairing_id: repair._id, repairing: true },
-      { new: true },
-    );
-
-    if (!car) {
-      return next(new apiError(`No car for this number ${carNumber}`, 404));
-    }
-    await car.save();
-  }
   res.status(200).json({
     data: {
       _id: repair._id,
@@ -512,7 +504,10 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
     'manually',
     'id',
     'reception',
-    'representative'
+    'representative',
+    'carCode',
+    'code',
+    'skipCode',
   ];
 
   // Filter body to only include allowed fields
@@ -523,29 +518,32 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
     }
   }
 
-  let totalPrice = 0;
-  let totalServicesCount = 0;
-  let completedServices = 0;
-  let complete = false;
-  let newId: any = 0;
-  const const_part_of_id = "2021";
-  const {
-    components,
-    services,
-    additions,
-    clientName,
-    carNumber,
-    brand,
-    category,
-    model,
-    type,
-    discount,
-    daysItTake,
-    Note1,
-    Note2,
-    distance,
-    technicians,
-  } = filteredBody;
+  // Walk-in for a client who already has a code: attach it to their car.
+  const skipCode =
+    filteredBody.skipCode === true || filteredBody.skipCode === "true";
+  const registeredCode = skipCode
+    ? ""
+    : String(filteredBody.carCode ?? filteredBody.code ?? "").trim();
+  if (registeredCode) {
+    const car = await Car.findOne({ generatedCode: registeredCode });
+    if (!car) {
+      return next(
+        new apiError(`No registered car with code ${registeredCode}`, 404),
+      );
+    }
+    const repair = await createRepairCore(
+      req,
+      {
+        ...filteredBody,
+        carNumber: car.carNumber,
+        type: filteredBody.type || "periodic",
+      },
+      { car, attributionBody: req.body, preserveCarSchedule: true },
+    );
+    return res.status(201).json({ data: repair });
+  }
+
+  const { clientName, carNumber, brand, category, model } = filteredBody;
 
   // Validate required fields
   if (!clientName || !carNumber || !brand || !category || !model) {
@@ -557,197 +555,11 @@ export const walkInRepair = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Generate genId (same logic as createRepairing)
-  if (filteredBody.manually == "True" || filteredBody.manually == true) {
-    const id = filteredBody.id;
-    const parsedCarCode = parseInt(id, 10);
-
-    if (isNaN(parsedCarCode) || !Number.isInteger(parsedCarCode)) {
-      return next(new apiError(`Invalid carCode. It must be a number.`, 400));
-    }
-
-    newId = const_part_of_id + parsedCarCode;
-    const exRepair = await Repairing.findOne({ genId: newId });
-    if (exRepair) {
-      return next(
-        new apiError(`Repairing with id ${newId} already exists.`, 400),
-      );
-    }
-  } else {
-    const regex = new RegExp("^" + const_part_of_id + "\\d+$", "i");
-
-    const repairs = await Repairing.aggregate([
-      { $match: { genId: regex } },
-      {
-        $project: {
-          numericCode: {
-            $toInt: {
-              $substr: [
-                "$genId",
-                { $strLenCP: const_part_of_id },
-                {
-                  $subtract: [
-                    { $strLenCP: "$genId" },
-                    { $strLenCP: const_part_of_id },
-                  ],
-                },
-              ],
-            },
-          },
-        },
-      },
-    ]);
-
-    const validCodes = repairs
-      .map((repair) => repair.numericCode)
-      .filter((num) => !isNaN(num) && num > 0)
-      .sort((a, b) => a - b);
-
-    if (validCodes.length > 0) {
-      for (let i = 0; i < validCodes.length; i++) {
-        if (validCodes[i] !== i + 1) {
-          newId = const_part_of_id + (i + 1);
-          break;
-        }
-      }
-      if (!newId) {
-        newId = const_part_of_id + (validCodes.length + 1);
-      }
-    } else {
-      newId = const_part_of_id + "1";
-    }
-  }
-
-  if (!components || !services || !additions) {
-    return next(
-      new apiError(
-        "Components, services, and additions arrays are required",
-        400,
-      ),
-    );
-  }
-
-  // Normalize car number
-  const normalizedCarNumber = normalizeCarNumber(carNumber);
-
-  const repairDetails = [];
-
-  for (const { price, state } of services) {
-    totalPrice += toMoney(price);
-    totalServicesCount++;
-    if (state === "completed") {
-      completedServices++;
-    }
-  }
-
-  for (const { price } of additions) {
-    totalPrice += toMoney(price);
-  }
-
-  for (const { id, quantity } of components) {
-    const qty = toMoney(quantity);
-    const inventoryComponent = await Inventory.findById(id);
-
-    if (!inventoryComponent) {
-      return next(
-        new apiError(`Component with ID ${id} not found in inventory`, 404),
-      );
-    }
-    if (
-      inventoryComponent.quantity < qty ||
-      inventoryComponent.quantity < 0
-    ) {
-      return next(
-        new apiError(`Not enough quantity for component with id ${id}`, 400),
-      );
-    }
-    inventoryComponent.quantity -= qty;
-    await inventoryComponent.save({ validateBeforeSave: false });
-
-    // Check if quantity is low and send notification to admin
-    if (inventoryComponent.quantity < inventoryComponent.alertQuantity) {
-      try {
-        await sendLowQuantityNotification(
-          inventoryComponent.name,
-          inventoryComponent.quantity,
-        );
-      } catch (error) {
-        console.error("Failed to send low quantity notification:", error);
-      }
-    }
-
-    const componentPrice = toMoney(inventoryComponent.price) * qty;
-    totalPrice += componentPrice;
-
-    repairDetails.push({
-      name: inventoryComponent.name,
-      quantity: qty,
-      price: componentPrice,
-    });
-  }
-
-  const completedServicesRatio =
-    totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
-  const discountAmount = toMoney(discount);
-  const priceAfterDiscount = round2(totalPrice - discountAmount);
-
-  const expectedDate = new Date();
-  if(Number(daysItTake) > 0){
-    expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
-  }
-
-  const receptionEngineer = await resolveReceptionForRequest(req);
-  const representative = resolveRepresentative(req.body);
-
-  const normalizedServices = (services || []).map((s) => ({
-    ...s,
-    price: toMoney(s.price),
-  }));
-  const normalizedAdditions = (additions || []).map((a) => ({
-    ...a,
-    price: toMoney(a.price),
-  }));
-
-  // Create walk-in repair without car reference
-  const repair = await Repairing.create({
-    client: clientName,
-    genId: newId,
-    brand: brand,
-    category: category,
-    model: model,
-    component: repairDetails,
-    Services: normalizedServices,
-    additions: normalizedAdditions,
-    carNumber: normalizedCarNumber,
-    type: type || "periodic",
-    totalPrice,
-    discount: discountAmount,
-    priceAfterDiscount,
-    expectedDate,
-    complete,
-    completedServicesRatio,
-    Note1,
-    Note2,
-    distance: toMoney(distance),
-    technicians: technicians || [],
-    Reception: receptionEngineer,
-    receptionEngineer,
-    representative,
-  });
-
-  // Increment numberOfRepairs and monthlyRepairs for each technician
-  if (technicians && technicians.length > 0) {
-    for (const technician of technicians) {
-      const worker = await Worker.findById(technician.workerId);
-      if (worker) {
-        worker.numberOfRepairs += 1;
-        if (complete) {
-          worker.monthlyRepairs += 1;
-        }
-        await worker.save();
-      }
-    }
-  }
+  const repair = await createRepairCore(
+    req,
+    { ...filteredBody, carNumber: normalizeCarNumber(carNumber) },
+    { attributionBody: req.body },
+  );
 
   res.status(201).json({ data: repair });
 });
@@ -972,17 +784,8 @@ export const updateServiceStateById = asyncHandler(async (req, res, next) => {
       { new: true },
     );
     if (doc) {
-      // If repair just became complete, increment monthlyRepairs for technicians
-      if (doc.complete && doc.technicians && doc.technicians.length > 0) {
-        for (const technician of doc.technicians) {
-          if (technician.workerId) {
-            await Worker.findByIdAndUpdate(
-              technician.workerId,
-              { $inc: { monthlyRepairs: 1 } }
-            );
-          }
-        }
-      }
+      // Recount from completed repairs; re-ticking a done service no longer adds one.
+      await refreshMonthlyRepairs(technicianIds(doc));
       await syncCarWithRepair(doc);
     }
     return doc;
@@ -1213,54 +1016,11 @@ export const getRepairsReport = asyncHandler(async (req, res, next) => {
     data: info,
   });
 });
+// @desc suggest the next invoice number (the part after "2021")
+// @Route GET /api/v1/repairing/nextCode/suggestNextCodeNumber
 export const suggestNextCodeNumber = asyncHandler(async (req, res, next) => {
-  const const_part_of_id = "2021";
-  let newId = null;
-  const regex = new RegExp("^" + const_part_of_id + "\\d+$", "i");
-
-  const repairs = await Repairing.aggregate([
-    { $match: { genId: regex } },
-    {
-      $project: {
-        numericCode: {
-          $toInt: {
-            $substr: [
-              "$genId",
-              { $strLenCP: const_part_of_id },
-              {
-                $subtract: [
-                  { $strLenCP: "$genId" },
-                  { $strLenCP: const_part_of_id },
-                ],
-              },
-            ],
-          },
-        },
-      },
-    },
-  ]);
-
-  const validCodes = repairs
-    .map((repair) => repair.numericCode)
-    .filter((num) => !isNaN(num) && num > 0)
-    .sort((a, b) => a - b);
-
-  //find the first missing number or create the next newId
-  if (validCodes.length > 0) {
-    for (let i = 0; i < validCodes.length; i++) {
-      if (validCodes[i] !== i + 1) {
-        newId = i + 1;
-        break;
-      }
-    }
-
-    if (!newId) {
-      newId = validCodes.length + 1;
-    }
-  } else {
-    newId = "1";
-  }
-
+  // Numbers come from a counter and are never reused after a delete.
+  const newId = await peekInvoiceNumber();
   res.status(200).json({ data: newId });
 });
 
@@ -1278,8 +1038,19 @@ const updateRepairHandler = async (req, res, next) => {
   if (!repair) {
     return next(new apiError(`No repair for this ID: ${req.params.id}`, 404));
   }
-  let newComplete = false;
-  let diffQuantity = 0;
+  // Walk-ins have no car; car bookkeeping is skipped for them.
+  const hasCar = Boolean(repair.carId);
+  const techniciansBefore = technicianIds(repair);
+  const discountBefore = toMoney(repair.discount);
+  const subtotalBefore = sumRepairLineTotals(repair);
+
+  // Nothing is written until every change below has been validated.
+  // Stock changes and car updates are collected here and applied after.
+  const stockChanges = [];
+  const carUpdates: any = {};
+  let typeChange = null;
+  const workerCountChanges = [];
+
   if (req.body.genId) {
     if (!/^2021\d*$/.test(req.body.genId)) {
       return next(
@@ -1306,35 +1077,13 @@ const updateRepairHandler = async (req, res, next) => {
   }
   if (req.body.components && req.body.components.length > 0) {
     for (const { id: componentId, quantity, remove } of req.body.components) {
-      const qty = toMoney(quantity);
       //search in the repair components
       const repairComponent = repair.component.find(
         (comp: any) => comp._id.toString() === componentId,
       );
-      
-      if (repairComponent) {
-        const inventory = await Inventory.findOne({
-          _id: repairComponent._id,
-        });
-        if (remove) {
-          if (inventory) {
-            inventory.quantity += repairComponent.quantity;
-            await inventory.save({ validateBeforeSave: false });
-          } else {
-            return next(
-              new apiError(
-                `Component with name ${repairComponent.name} not found in inventory`,
-                404,
-              ),
-            );
-          }
-          //remove the component from the repair
-          repair.component = repair.component.filter(
-            (comp) => comp._id.toString() !== componentId,
-          );
-          continue;
-        }
 
+      if (repairComponent) {
+        const inventory = await findInventoryForLine(repairComponent);
         if (!inventory) {
           return next(
             new apiError(
@@ -1344,19 +1093,51 @@ const updateRepairHandler = async (req, res, next) => {
           );
         }
 
-        if (repairComponent.quantity < qty) {
-          diffQuantity = qty - repairComponent.quantity;
-          inventory.quantity -= diffQuantity;
-        } else if (repairComponent.quantity > qty) {
-          diffQuantity = repairComponent.quantity - qty;
-          inventory.quantity += diffQuantity;
+        let qty = 0;
+        if (!remove) {
+          qty = Number(quantity);
+          if (!Number.isFinite(qty) || qty < 0) {
+            return next(
+              new apiError(
+                `Quantity for ${repairComponent.name} must be 0 or more`,
+                400,
+              ),
+            );
+          }
         }
+
+        // Quantity 0 removes the line, like remove: true.
+        if (qty === 0) {
+          stockChanges.push({
+            id: String(inventory._id),
+            qty: -toMoney(repairComponent.quantity),
+          });
+          repair.component = repair.component.filter(
+            (comp) => comp._id.toString() !== componentId,
+          );
+          continue;
+        }
+
+        const diff = qty - toMoney(repairComponent.quantity);
+        if (diff > 0 && inventory.quantity < diff) {
+          return next(
+            new apiError(
+              `Not enough quantity for component with id ${componentId}`,
+              400,
+            ),
+          );
+        }
+        if (diff !== 0) stockChanges.push({ id: String(inventory._id), qty: diff });
         repairComponent.quantity = qty;
         // Always store LINE TOTAL from current inventory unit price
         repairComponent.price = toMoney(inventory.price) * qty;
-        await inventory.save({ validateBeforeSave: false });
       } else {
-        const inventoryComponent = await Inventory.findById(componentId);
+        // Removing a line that isn't on the repair is a no-op.
+        if (remove) continue;
+
+        const inventoryComponent = mongoose.Types.ObjectId.isValid(componentId)
+          ? await Inventory.findById(componentId)
+          : null;
 
         if (!inventoryComponent) {
           return next(
@@ -1366,19 +1147,17 @@ const updateRepairHandler = async (req, res, next) => {
             ),
           );
         }
-        if (qty === 0) {
+        const qty = Number(quantity);
+        if (!Number.isFinite(qty) || qty <= 0) {
           return next(
             new apiError(
               `in the add operation the quantity must be greater than zero`,
-              404,
+              400,
             ),
           );
         }
 
-        if (
-          inventoryComponent.quantity < qty ||
-          inventoryComponent.quantity < 0
-        ) {
+        if (inventoryComponent.quantity < qty) {
           return next(
             new apiError(
               `Not enough quantity for component with ID ${componentId}`,
@@ -1387,21 +1166,7 @@ const updateRepairHandler = async (req, res, next) => {
           );
         }
 
-        inventoryComponent.quantity -= qty;
-        await inventoryComponent.save({ validateBeforeSave: false });
-
-        // Check if quantity is low and send notification to admin
-        if (inventoryComponent.quantity < inventoryComponent.alertQuantity) {
-          try {
-            await sendLowQuantityNotification(
-              inventoryComponent.name,
-              inventoryComponent.quantity,
-            );
-          } catch (error) {
-            console.error("Failed to send low quantity notification:", error);
-          }
-        }
-
+        stockChanges.push({ id: String(componentId), qty });
         const componentPrice = toMoney(inventoryComponent.price) * qty;
 
         repair.component.push({
@@ -1442,7 +1207,10 @@ const updateRepairHandler = async (req, res, next) => {
           }
           // null/undefined = leave price unchanged (do not treat as 0)
           if (price !== undefined && price !== null && price !== "") {
-            repairService.price = toMoney(price);
+            repairService.price = requireNonNegativeMoney(
+              price,
+              `Price of service "${repairService.name}"`,
+            );
           }
           if (state) {
             repairService.state = state;
@@ -1452,31 +1220,20 @@ const updateRepairHandler = async (req, res, next) => {
         // new service — allow price 0
         repair.Services.push({
           name,
-          price: toMoney(price),
+          price: requireNonNegativeMoney(price, `Price of service "${name ?? ""}"`),
           state,
         });
       }
     }
 
-    // Recalculate overall service completion and update car state once
+    // Recalculate overall service completion; the car is updated after saving.
     const totalServicesCount = repair.Services.length;
     const completedServices = repair.Services.filter(
       (service) => service.state === "completed",
     ).length;
-    const completedServicesRatio =
+    repair.complete = completedServices === totalServicesCount;
+    repair.completedServicesRatio =
       totalServicesCount > 0 ? completedServices / totalServicesCount : 0;
-
-    newComplete = completedServices === totalServicesCount;
-    repair.complete = newComplete;
-    repair.completedServicesRatio = completedServicesRatio;
-
-    const carFound = await syncCarWithRepair(repair, repair.nextRepairDate);
-
-    if (!carFound) {
-      return next(
-        new apiError(`No car for this number ${repair.carNumber}`, 404),
-      );
-    }
   }
   if (req.body.additions && req.body.additions.length > 0) {
     // Process each incoming addition exactly once to avoid duplicates
@@ -1505,85 +1262,50 @@ const updateRepairHandler = async (req, res, next) => {
             repairAddition.name = name;
           }
           if (price !== undefined && price !== null && price !== "") {
-            repairAddition.price = toMoney(price);
+            repairAddition.price = requireNonNegativeMoney(
+              price,
+              `Price of addition "${repairAddition.name}"`,
+            );
           }
         }
       } else {
         // new addition — allow price 0
-        repair.additions.push({ name, price: toMoney(price) });
+        repair.additions.push({
+          name,
+          price: requireNonNegativeMoney(price, `Price of addition "${name ?? ""}"`),
+        });
       }
     }
   }
 
   if (req.body.discount !== undefined && req.body.discount !== null) {
-    repair.discount = toMoney(req.body.discount);
+    repair.discount = requireNonNegativeMoney(req.body.discount, "Discount");
   }
 
   if (req.body.type && req.body.type !== repair.type) {
-    let periodicRepairs = 0;
-    let nonperiodicRepairs = 0;
-    const reCar = await Car.findById(repair.carId);
-    if (!reCar) {
-      return next(new apiError(`No car for this repair`, 404));
-    }
-    periodicRepairs = reCar.periodicRepairs;
-    nonperiodicRepairs = reCar.nonPeriodicRepairs;
-    if (req.body.type == "periodic" || req.body.type == "nonPeriodic") {
-      if (req.body.type == "periodic") {
-        periodicRepairs += 1;
-        if (repair.type == "nonPeriodic") {
-          nonperiodicRepairs -= 1;
-        } else if (repair.type == "periodic") {
-          periodicRepairs -= 1;
-        }
-      } else {
-        nonperiodicRepairs += 1;
-        if (repair.type == "periodic") {
-          periodicRepairs -= 1;
-        } else if (repair.type == "nonPeriodic") {
-          nonperiodicRepairs -= 1;
-        }
-      }
-    } else {
+    if (req.body.type != "periodic" && req.body.type != "nonPeriodic") {
       return next(
         new apiError(`the type must be periodic or nonPeriodic only`, 400),
       );
     }
-    reCar.periodicRepairs = periodicRepairs;
-    reCar.nonPeriodicRepairs = nonperiodicRepairs;
-
-    reCar.save();
+    if (hasCar) {
+      const reCar = await Car.findById(repair.carId);
+      if (!reCar) {
+        return next(new apiError(`No car for this repair`, 404));
+      }
+      typeChange = { car: reCar, from: repair.type, to: req.body.type };
+    }
     repair.type = req.body.type;
   }
 
   if (req.body.nextRepairDate) {
-    if (repair.complete) {
-      await Car.findByIdAndUpdate(
-        repair.carId,
-        {
-          lastRepairDate: new Date(),
-          nextRepairDate: req.body.nextRepairDate,
-        },
-        { new: true },
-      );
-    } else{
-      await Car.findByIdAndUpdate(
-        repair.carId,
-        {
-          nextRepairDate: req.body.nextRepairDate,
-        },
-        { new: true },
-      );
-    }
+    carUpdates.nextRepairDate = req.body.nextRepairDate;
+    if (repair.complete) carUpdates.lastRepairDate = new Date();
     repair.nextRepairDate = req.body.nextRepairDate;
   }
 
   if (req.body.nextRepairDistance) {
-      await Car.findByIdAndUpdate(
-        repair.carId,
-        { nextRepairDistance: req.body.nextRepairDistance },
-        { new: true },
-      );
+    carUpdates.nextRepairDistance = req.body.nextRepairDistance;
     repair.nextRepairDistance = req.body.nextRepairDistance;
   }
 
@@ -1599,13 +1321,7 @@ const updateRepairHandler = async (req, res, next) => {
 
         if (repairTechnician) {
           if (remove) {
-            // Remove technician and decrement count
-            const worker = await Worker.findById(workerId);
-            if (worker) {
-              worker.numberOfRepairs = Math.max(0, worker.numberOfRepairs - 1);
-              worker.monthlyRepairs = Math.max(0, worker.monthlyRepairs - 1);
-              await worker.save();
-            }
+            workerCountChanges.push({ workerId, inc: -1 });
             repair.technicians = repair.technicians.filter(
               (t) => t.workerId?.toString() !== workerId,
             );
@@ -1618,12 +1334,7 @@ const updateRepairHandler = async (req, res, next) => {
         } else {
           // Add new technician
           if (!remove) {
-            const worker = await Worker.findById(workerId);
-            if (worker) {
-              worker.numberOfRepairs += 1;
-              worker.monthlyRepairs +=1;
-              await worker.save();
-            }
+            workerCountChanges.push({ workerId, inc: 1 });
             repair.technicians.push({ workerId, name });
           }
         }
@@ -1649,14 +1360,8 @@ const updateRepairHandler = async (req, res, next) => {
     repair.Note2 = req.body.Note2;
   }
   if (req.body.distance !== undefined && req.body.distance !== "") {
-    const car_distance = await Car.findByIdAndUpdate(
-      repair.carId,
-      { distances : req.body.distance },
-      { new: true },
-    );
+    carUpdates.distances = req.body.distance;
     repair.distance = req.body.distance;
-    
-    
   }
 
   // Invoice attribution — only overwrite when the client sends the keys.
@@ -1670,9 +1375,59 @@ const updateRepairHandler = async (req, res, next) => {
   }
 
   // Always rebuild money from current lines (no incremental drift)
-  applyRepairTotals(repair);
+  const { totalPrice } = applyRepairTotals(repair);
+  // Old invoices may already have a discount above their subtotal; editing
+  // them (a note, a date) stays allowed. Block only edits that make it worse.
+  if (
+    toMoney(repair.discount) > discountBefore ||
+    totalPrice < subtotalBefore
+  ) {
+    requireValidDiscount(repair.discount, totalPrice);
+  } else {
+    requireNonNegativeMoney(repair.discount, "Discount");
+  }
 
-  await repair.save();
+  // Everything is valid: take/return stock, then save. Undo stock if the save fails.
+  const applied = await applyStockChanges(stockChanges);
+  try {
+    await repair.save();
+  } catch (error) {
+    await revertStockChanges(applied);
+    throw error;
+  }
+
+  if (hasCar) {
+    try {
+      if (typeChange) {
+        const { car, from, to } = typeChange;
+        if (from == "periodic") car.periodicRepairs = (car.periodicRepairs || 0) - 1;
+        else if (from == "nonPeriodic") car.nonPeriodicRepairs = (car.nonPeriodicRepairs || 0) - 1;
+        if (to == "periodic") car.periodicRepairs = (car.periodicRepairs || 0) + 1;
+        else car.nonPeriodicRepairs = (car.nonPeriodicRepairs || 0) + 1;
+        await car.save({ validateBeforeSave: false });
+      }
+      if (req.body.services && req.body.services.length > 0) {
+        await syncCarWithRepair(repair, repair.nextRepairDate);
+      }
+      if (Object.keys(carUpdates).length > 0) {
+        await Car.updateOne({ _id: repair.carId }, { $set: carUpdates });
+      }
+    } catch (error) {
+      console.error(`Repair ${repair._id} saved but car update failed:`, error);
+    }
+  }
+
+  for (const { workerId, inc } of workerCountChanges) {
+    if (!mongoose.Types.ObjectId.isValid(workerId)) continue;
+    const worker = await Worker.findById(workerId).select("numberOfRepairs");
+    if (worker) {
+      await Worker.updateOne(
+        { _id: workerId },
+        { $set: { numberOfRepairs: Math.max(0, (worker.numberOfRepairs || 0) + inc) } },
+      );
+    }
+  }
+  await refreshMonthlyRepairs([...techniciansBefore, ...technicianIds(repair)]);
 
   res.status(200).json({ data: repair });
 };
@@ -1709,39 +1464,27 @@ export const deleteRepair = asyncHandler(async (req, res, next) => {
 
   const carNumber = repair.carNumber;
 
-  // Check if components array is not empty
-  if (repair.component && repair.component.length > 0) {
-    for (const component of repair.component) {
-      const { componentId, quantity } = component;
-
-      const inventoryItem = await Inventory.findOne({ componentId });
-      if (inventoryItem) {
-        inventoryItem.quantity += quantity;
-        await inventoryItem.save({ validateBeforeSave: false });
-      } else {
-        return next(new apiError(`there is no component with this id ${componentId}`, 404));
-      }
+  // Put the parts back on the item they came from. Lines store the
+  // inventory id as their _id (older walk-in lines: matched by name).
+  const stockChanges = [];
+  for (const component of repair.component || []) {
+    const inventoryItem = await findInventoryForLine(component);
+    if (inventoryItem) {
+      stockChanges.push({
+        id: String(inventoryItem._id),
+        qty: -toMoney(component.quantity),
+      });
+    } else {
+      console.warn(
+        `Repair ${id}: inventory item for "${component.name}" no longer exists; its quantity was not restocked.`,
+      );
     }
   }
+  const applied = await applyStockChanges(stockChanges);
 
   if (repair.complete) {
-    const car = await Car.findOne({ repairing_id: id });
-    if (car) {
-      car.repairing_id = null;
-      await car.save();
-    }
+    await Car.updateOne({ repairing_id: id }, { $set: { repairing_id: null } });
   }
-  if (repair.technicians && repair.technicians.length > 0) {
-    for (const technician of repair.technicians) {
-      const worker = await Worker.findById(technician.workerId);
-      if (worker) {
-        worker.numberOfRepairs -= 1;
-        worker.monthlyRepairs-=1;
-        await worker.save();
-      }
-    }
-  }
-
   // Update car periodic/nonPeriodic repairs count
   if(repair.carId){
     const car = await Car.findById(repair.carId);
@@ -1751,12 +1494,29 @@ export const deleteRepair = asyncHandler(async (req, res, next) => {
       } else{
         car.nonPeriodicRepairs = Math.max(0, car.nonPeriodicRepairs - 1);
       }
-      await car.save();
+      await car.save({ validateBeforeSave: false });
     }
   }
 
-  await repair.deleteOne();
+  try {
+    await repair.deleteOne();
+  } catch (error) {
+    await revertStockChanges(applied);
+    throw error;
+  }
   console.log(`Repair document with ID ${id} successfully deleted.`);
+
+  const workerIds = technicianIds(repair);
+  for (const workerId of workerIds) {
+    const worker = await Worker.findById(workerId).select("numberOfRepairs");
+    if (worker) {
+      await Worker.updateOne(
+        { _id: workerId },
+        { $set: { numberOfRepairs: Math.max(0, (worker.numberOfRepairs || 0) - 1) } },
+      );
+    }
+  }
+  await refreshMonthlyRepairs(workerIds);
 
   // Check if all repairs for this car are completed
   const allRepairs = await Repairing.find({ carNumber });

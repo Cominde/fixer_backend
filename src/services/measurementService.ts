@@ -6,6 +6,8 @@ const User = require("../models/userModel");
 const apiError = require("../utils/apiError");
 const asyncHandler = require("express-async-handler");
 const ApiFeatures = require("../utils/apiFeatures");
+const { findInventoryForLine } = require("./stockService");
+const { createRepairCore } = require("./repairingService");
 
 const toMoney = (value) => {
   const n = Number(value);
@@ -97,7 +99,7 @@ export const createMeasurement = asyncHandler(async (req, res, next) => {
   const repairDetails = [];
 
   for (const { price, state } of services) {
-    totalPrice += price;
+    totalPrice += toMoney(price);
     totalServicesCount++;
     if (state === "completed") {
       completedServices++;
@@ -105,7 +107,7 @@ export const createMeasurement = asyncHandler(async (req, res, next) => {
   }
 
   for (const { price } of additions) {
-    totalPrice += price;
+    totalPrice += toMoney(price);
   }
 
   for (const { id, quantity } of components) {
@@ -117,12 +119,16 @@ export const createMeasurement = asyncHandler(async (req, res, next) => {
       );
     }
 
-    const componentPrice = inventoryComponent.price * quantity;
+    const qty = toMoney(quantity);
+    const componentPrice = toMoney(inventoryComponent.price) * qty;
     totalPrice += componentPrice;
 
+    // The line keeps the inventory id so accepting the quote takes stock
+    // from the right item, even if names change.
     repairDetails.push({
+      _id: inventoryComponent._id,
       name: inventoryComponent.name,
-      quantity: quantity,
+      quantity: qty,
       price: componentPrice,
     });
   }
@@ -132,7 +138,9 @@ export const createMeasurement = asyncHandler(async (req, res, next) => {
   const priceAfterDiscount = round2(toMoney(totalPrice) - toMoney(discount));
 
   const expectedDate = new Date();
-  expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+  if (Number(daysItTake) > 0) {
+    expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+  }
 
   // Get car information
   const car = await Car.findOne({ carNumber });
@@ -147,12 +155,12 @@ export const createMeasurement = asyncHandler(async (req, res, next) => {
     category: car.category,
     model: car.model,
     component: repairDetails,
-    Services: services,
-    additions,
+    Services: services.map((svc) => ({ ...svc, price: toMoney(svc.price) })),
+    additions: additions.map((a) => ({ ...a, price: toMoney(a.price) })),
     carNumber: carNumber,
     type: type || "periodic",
     totalPrice,
-    discount,
+    discount: toMoney(discount),
     priceAfterDiscount,
     expectedDate,
     complete: false,
@@ -262,7 +270,7 @@ export const walkInMeasurement = asyncHandler(async (req, res, next) => {
   const repairDetails = [];
 
   for (const { price, state } of services) {
-    totalPrice += price;
+    totalPrice += toMoney(price);
     totalServicesCount++;
     if (state === "completed") {
       completedServices++;
@@ -270,7 +278,7 @@ export const walkInMeasurement = asyncHandler(async (req, res, next) => {
   }
 
   for (const { price } of additions) {
-    totalPrice += price;
+    totalPrice += toMoney(price);
   }
 
   for (const { id, quantity } of components) {
@@ -282,12 +290,16 @@ export const walkInMeasurement = asyncHandler(async (req, res, next) => {
       );
     }
 
-    const componentPrice = inventoryComponent.price * quantity;
+    const qty = toMoney(quantity);
+    const componentPrice = toMoney(inventoryComponent.price) * qty;
     totalPrice += componentPrice;
 
+    // The line keeps the inventory id so accepting the quote takes stock
+    // from the right item, even if names change.
     repairDetails.push({
+      _id: inventoryComponent._id,
       name: inventoryComponent.name,
-      quantity: quantity,
+      quantity: qty,
       price: componentPrice,
     });
   }
@@ -297,7 +309,9 @@ export const walkInMeasurement = asyncHandler(async (req, res, next) => {
   const priceAfterDiscount = round2(toMoney(totalPrice) - toMoney(discount));
 
   const expectedDate = new Date();
-  expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+  if (Number(daysItTake) > 0) {
+    expectedDate.setDate(expectedDate.getDate() + parseInt(daysItTake));
+  }
 
   // Create walk-in measurement without car reference
   const measurement = await Measurement.create({
@@ -307,12 +321,12 @@ export const walkInMeasurement = asyncHandler(async (req, res, next) => {
     category: category,
     model: model,
     component: repairDetails,
-    Services: services,
-    additions,
+    Services: services.map((svc) => ({ ...svc, price: toMoney(svc.price) })),
+    additions: additions.map((a) => ({ ...a, price: toMoney(a.price) })),
     carNumber: carNumber,
     type: type || "periodic",
     totalPrice,
-    discount,
+    discount: toMoney(discount),
     priceAfterDiscount,
     expectedDate,
     complete: false,
@@ -451,120 +465,94 @@ export const acceptMeasurement = asyncHandler(async (req, res, next) => {
     );
   }
 
-  measurement.acceptance = acceptance;
-  measurement.acceptedAt = new Date();
-
-  if (acceptance === true) {
-    // Convert to repair
-    let newId: any = 0;
-    const const_part_of_id = "2021";
-
-    // Generate genId for repair
-    const regex = new RegExp("^" + const_part_of_id + "\\d+$", "i");
-
-    const repairs = await Repairing.aggregate([
-      { $match: { genId: regex } },
-      {
-        $project: {
-          numericCode: {
-            $toInt: {
-              $substr: [
-                "$genId",
-                { $strLenCP: const_part_of_id },
-                {
-                  $subtract: [
-                    { $strLenCP: "$genId" },
-                    { $strLenCP: const_part_of_id },
-                  ],
-                },
-              ],
-            },
-          },
-        },
-      },
-    ]);
-
-    const validCodes = repairs
-      .map((repair) => repair.numericCode)
-      .filter((num) => !isNaN(num) && num > 0)
-      .sort((a, b) => a - b);
-
-    if (validCodes.length > 0) {
-      for (let i = 0; i < validCodes.length; i++) {
-        if (validCodes[i] !== i + 1) {
-          newId = const_part_of_id + (i + 1);
-          break;
-        }
-      }
-      if (!newId) {
-        newId = const_part_of_id + (validCodes.length + 1);
-      }
-    } else {
-      newId = const_part_of_id + "1";
-    }
-
-    // Deduct from inventory now that it's accepted
-    for (const component of measurement.component) {
-      const inventoryComponent = await Inventory.findOne({ name: component.name });
-
-      if (!inventoryComponent) {
-        return next(
-          new apiError(`Component ${component.name} not found in inventory`, 404),
-        );
-      }
-
-      if (inventoryComponent.quantity < component.quantity) {
-        return next(
-          new apiError(
-            `Not enough quantity for component ${component.name}. Available: ${inventoryComponent.quantity}, Required: ${component.quantity}`,
-            400,
-          ),
-        );
-      }
-
-      inventoryComponent.quantity -= component.quantity;
-      await inventoryComponent.save();
-    }
-
-    // Create repair from measurement
-    const repair = await Repairing.create({
-      client: measurement.client,
-      genId: newId,
-      brand: measurement.brand,
-      category: measurement.category,
-      model: measurement.model,
-      component: measurement.component,
-      Services: measurement.Services,
-      additions: measurement.additions,
-      carNumber: measurement.carNumber,
-      type: measurement.type,
-      totalPrice: measurement.totalPrice,
-      discount: measurement.discount,
-      priceAfterDiscount: measurement.priceAfterDiscount,
-      expectedDate: measurement.expectedDate,
-      complete: false,
-      completedServicesRatio: measurement.completedServicesRatio,
-      Note1: measurement.Note1,
-      Note2: measurement.Note2,
-      distance: measurement.distance,
-      nextRepairDistance: measurement.nextRepairDistance,
-      nextRepairDate: measurement.nextRepairDate,
-      carId: measurement.carId,
-      generatedCode: measurement.generatedCode,
-    });
-
-    // Delete the measurement after converting to repair
-    await Measurement.findByIdAndDelete(id);
-
-    res.status(200).json({
-      repair: repair,
-      message: "Measurement accepted and converted to repair",
-    });
-  } else {
+  if (acceptance !== true) {
+    measurement.acceptance = acceptance;
+    measurement.acceptedAt = new Date();
     await measurement.save();
-    res.status(200).json({
+    return res.status(200).json({
       data: measurement,
       message: "Measurement rejected",
     });
   }
+
+  // Claim the quote first, so two clicks can't convert it twice.
+  const claimed = await Measurement.findOneAndUpdate(
+    { _id: id, convertedToRepair: { $ne: true } },
+    { $set: { convertedToRepair: true, acceptance: true, acceptedAt: new Date() } },
+    { new: true },
+  );
+  if (!claimed) {
+    return next(
+      new apiError("Measurement has already been converted to repair", 400),
+    );
+  }
+
+  const releaseClaim = () =>
+    Measurement.updateOne(
+      { _id: id },
+      { $set: { convertedToRepair: false, acceptance: measurement.acceptance } },
+    );
+
+  let repair;
+  try {
+    // Quote lines carry the inventory id; older quotes are matched by name.
+    const components = [];
+    for (const line of claimed.component) {
+      const inventoryItem = await findInventoryForLine(line);
+      if (!inventoryItem) {
+        throw new apiError(`Component ${line.name} not found in inventory`, 404);
+      }
+      components.push({
+        id: String(inventoryItem._id),
+        quantity: line.quantity,
+        price: line.price,
+      });
+    }
+
+    const input = {
+      components,
+      services: claimed.Services.map((svc) => ({
+        name: svc.name,
+        price: svc.price,
+        state: svc.state,
+      })),
+      additions: claimed.additions.map((a) => ({ name: a.name, price: a.price })),
+      carNumber: claimed.carNumber,
+      type: claimed.type || "periodic",
+      discount: claimed.discount,
+      Note1: claimed.Note1,
+      Note2: claimed.Note2,
+      distance: claimed.distance,
+      nextRepairDistance: claimed.nextRepairDistance,
+      nextRepairDate: claimed.nextRepairDate,
+      clientName: claimed.client,
+      brand: claimed.brand,
+      category: claimed.category,
+      model: claimed.model,
+    };
+
+    const car = claimed.carId ? await Car.findById(claimed.carId) : null;
+    if (claimed.carId && !car) {
+      throw new apiError(`The car for this measurement no longer exists`, 404);
+    }
+
+    // Same path as a new invoice: car state, counters and stock. The quoted
+    // part prices are kept so the customer pays what they were quoted.
+    repair = await createRepairCore(req, input, {
+      car,
+      keepComponentPrices: true,
+      expectedDate: claimed.expectedDate,
+    });
+  } catch (error) {
+    await releaseClaim();
+    throw error;
+  }
+
+  // Delete the measurement after converting to repair
+  await Measurement.findByIdAndDelete(id);
+
+  res.status(200).json({
+    repair: repair,
+    message: "Measurement accepted and converted to repair",
+  });
 });
