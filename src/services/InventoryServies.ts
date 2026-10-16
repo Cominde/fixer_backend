@@ -45,13 +45,9 @@ const readInventoryBody = (body, { partial }) => {
   return out;
 };
 
-/** Another item already using this name or barcode. */
-const findDuplicate = async ({ name, barcode }, excludeId = null) => {
+/** Another item already using this barcode. */
+const findDuplicate = async ({ barcode }, excludeId = null) => {
   const exclude = excludeId ? { _id: { $ne: excludeId } } : {};
-  if (name) {
-    const byName = await Inventory.findOne({ ...exclude, name });
-    if (byName) return { field: "name", doc: byName };
-  }
   if (barcode) {
     const byBarcode = await Inventory.findOne({ ...exclude, barcode });
     if (byBarcode) return { field: "barcode", doc: byBarcode };
